@@ -8,6 +8,11 @@ of it is a problem, it is at least easy to find.
 Nothing here modifies Weapon Camo And Stickers, its files, or its saved data. This is a
 separate BepInEx plugin with a hard dependency on it.
 
+Built against **1.19.0**. The floor is **1.18.0**, for one reason:
+`CamoEditor.CalculateUIScaleMatrix`, which the per-weapon panel uses to match the
+editor's UI scale, does not exist in 1.17.0. Every other member in the table below is
+present in 1.17.0, 1.18.0 and 1.19.0 alike.
+
 ## The problem
 
 Camo is projected onto a gun from a box around it. A magazine sits inside that box, so it
@@ -42,8 +47,13 @@ original stencil is kept, so removing the mod restores exactly what shipped.
 ## Finding magazines
 
 Harmony postfix on **`AssetPoolObject.OnGetFromPool()`** — every model the game shows
-comes out through it, and both `PopOrCreate` and `SetupGameObjectWithoutPool` set
-`ResourceType` before calling it.
+comes out through it, and both `EFT.ObjectsFactory.PopOrCreate` and
+`SetupGameObjectWithoutPool` set `ResourceType` before calling it.
+
+Those two are the **game's** methods, not Weapon Camo And Stickers'. This addon does not
+patch `ObjectsFactory`, and does not depend on how that mod tracks object creation — it
+finds magazines through the game's own pool, independently. What it does need from that
+mod is only the mapping in the table further down.
 
 A magazine is `ItemTemplate.IsChildOf("5448bc234bdc2d3c308b4569")` (Magazine) and not
 `IsChildOf("610720f290b75a49ff2e5e25")` (CylinderMagazine). Revolver and grenade launcher

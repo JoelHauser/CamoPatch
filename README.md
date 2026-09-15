@@ -2,7 +2,7 @@
 
 An addon for [Weapon Camo And Stickers](https://github.com/7Bpencil/SPT.WeaponCamoAndStickers) that changes how camo treats magazines in SPT.
 
-> **Pre-release.** Confirmed working in a raid against SPT 4.1.5 and Weapon Camo And Stickers 1.18.0.
+> **Pre-release.** Built and confirmed working in a raid against SPT 4.1.5 and Weapon Camo And Stickers 1.19.0.
 
 ## What it does
 
@@ -20,7 +20,7 @@ Presets don't need editing, and nothing is saved to your profile. Remove the add
 ## Requirements
 
 - SPT 4.1.5
-- [Weapon Camo And Stickers](https://github.com/7Bpencil/SPT.WeaponCamoAndStickers) 1.18.0 or newer — tested on 1.18.0
+- [Weapon Camo And Stickers](https://github.com/7Bpencil/SPT.WeaponCamoAndStickers) 1.19.0 — 1.18.0 also works; 1.17.0 and earlier do not
 
 ## Install
 
