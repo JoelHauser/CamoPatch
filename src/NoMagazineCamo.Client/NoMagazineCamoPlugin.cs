@@ -73,6 +73,7 @@ namespace NoMagazineCamo.Client
             StickyCamo.Install();
             Harmony.CreateAndPatchAll(typeof(MagazineStencil), PluginGuid);
             InstallEditorPanel();
+            InstallAmbient();
 
             Enabled.SettingChanged += OnSettingChanged;
             MagazineCamo.SettingChanged += OnSettingChanged;
@@ -94,6 +95,22 @@ namespace NoMagazineCamo.Client
                     "[NoMagazineCamo] the camo editor's window could not be hooked, so the "
                     + "per-weapon magazine setting has no panel. Weapons already set keep their "
                     + $"setting, and the F12 setting still works.\n{e}");
+            }
+        }
+
+        // Also separately: without it magazines kept off the gun's camo are lit flatly, which is
+        // ugly but is exactly how they looked before this pass existed.
+        private static void InstallAmbient()
+        {
+            try
+            {
+                Harmony.CreateAndPatchAll(typeof(MagazineAmbient), PluginGuid);
+            }
+            catch (Exception e)
+            {
+                Log.LogError(
+                    "[NoMagazineCamo] the game's ambient pass could not be hooked, so a magazine kept "
+                    + $"off the gun's camo will be lit differently from the gun.\n{e}");
             }
         }
 

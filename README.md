@@ -75,7 +75,7 @@ Revolver and grenade launcher cylinders are never affected. They keep their camo
 - **A gun you pick up mid-reload won't stick until the reload finishes.** Sticky camo learns where a gun's magazine sits by watching a seated one for a moment. Until it has, that gun's magazine behaves as if the addon were off in sticky mode.
 - **Two magazines in motion at once.** When the old and new magazines are both out mid-reload, camo meant for one can briefly show on the other if they pass close together.
 - **A Weapon Camo And Stickers update could break sticky camo.** It reads a few of that mod's internals to know what to redraw. If they move, sticky camo reports once in the log and turns itself off, leaving "keep magazines clean" working and your magazines' materials exactly as they shipped.
-- **Lighting.** If a magazine looks lit differently from the rest of the gun in first person, please open an issue with a screenshot.
+- **Lighting.** A magazine kept off the gun's camo sits outside the categories the game's ambient pass knows about, so the addon adds an ambient pass of its own to put it back. If a magazine still looks lit differently from the rest of the gun, please open an issue with a screenshot.
 
 ## How it works
 

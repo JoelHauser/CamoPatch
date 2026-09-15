@@ -16,6 +16,7 @@ src/NoMagazineCamo.Client/
   StickyCamo.cs             the per-frame loop: seat test, stencil switching, the extra decal draws
   MagazineChoice.cs         the per-weapon override and its file
   EditorPanel.cs            the panel docked under the camo editor
+  MagazineAmbient.cs        the ambient quad that relights magazines on the clean stencil
 scripts/pack.ps1            build + zip into dist/
 docs/internals.md           how it works, for other modders
 docs/mod-page.md            draft text for the mod page

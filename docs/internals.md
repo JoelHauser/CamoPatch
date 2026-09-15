@@ -154,6 +154,9 @@ Private, read by name through Harmony's `AccessTools`:
 | `Plugin.DecalCameras` | so preview cameras draw only their own item, like the camo mod's own pass |
 | `Plugin.DecalRenderer` → `DecalRenderer.CommandBuffers` | to know which cameras decals are drawn on |
 
+In the game itself, beyond `AssetPoolObject.OnGetFromPool`, a postfix on
+`AmbientHighlight.UpdateAmbientBuffer` adds the ambient quad described above.
+
 `CanCameraSeeDecals` is deliberately **not** copied: it goes through
 `EFT.CameraControl.CameraManager`, which only exists under that name in the
 launcher-patched assembly. Asking whether a camera already carries one of the camo mod's
@@ -173,6 +176,28 @@ camo reports once and turns itself off, leaving the simple "keep magazines clean
 working. If the per-frame loop or the panel throws, it reports once, reverts what it
 changed, and goes quiet — the camo mod is never left in a modified state, and a magazine's
 materials are always restored to the stencil they shipped with.
+
+## Ambient light on the clean stencil
+
+The stencil is not only the camo mod's lever, and this is the part worth knowing before
+copying the trick. `AmbientHighlight.UpdateAmbientBuffer` reads the same `_StencilType`
+property and applies the game's ambient as **one full-screen quad per category** --
+Static 0, Characters 1, Hands 2 -- each stencil-tested, each with a multiplier lerped
+between its min and max along an intensity curve driven by the sun's angle.
+
+There is no category 3. A magazine moved onto the clean stencil therefore falls out of
+every ambient quad and is left unlit, which is visible as the magazine's lighting
+changing the moment a reload starts, and permanently in the keep-clean mode.
+
+So one more quad is added, matching the Hands entries -- the category a weapon is in --
+with the stencil set to 3, queued onto the game's own ambient command buffer after its
+own quads so it inherits the blend modes and render target already set up there.
+
+It draws through a **copy** of `AmbientMaterial`. That is not tidiness: a `CommandBuffer`
+holds a material by reference rather than by value, and the game mutates that material's
+stencil inside the loop that queues its own quads. Setting the stencil on the game's own
+material here would change every quad it had already queued and take the world's ambient
+light with it.
 
 ## Logging
 
