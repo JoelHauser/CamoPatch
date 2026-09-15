@@ -9,7 +9,8 @@
     <Nullable>disable</Nullable>
     <Version>1.0.0</Version>
 
-    <SPTPath Condition="'$(SPTPath)' == ''">C:\HUH</SPTPath>
+    <!-- Required. There is no sensible default: the plugin is compiled against the game's
+         own assemblies, so this decides which EFT build it will load on. -->
     <GameManaged>$(SPTPath)\EscapeFromTarkov_Data\Managed</GameManaged>
     <BepInExCore>$(SPTPath)\BepInEx\core</BepInExCore>
 
@@ -28,6 +29,8 @@
   </PropertyGroup>
 
   <Target Name="ValidateSPTPath" BeforeTargets="BeforeBuild">
+    <Error Condition="'$(SPTPath)' == ''"
+           Text="SPTPath is not set. Build with -p:SPTPath=&lt;your SPT install&gt;, or use scripts\pack.ps1." />
     <Error Condition="!Exists('$(GameManaged)\UnityEngine.CoreModule.dll')"
            Text="SPTPath ('$(SPTPath)') is not an SPT install root -- no EscapeFromTarkov_Data\Managed\UnityEngine.CoreModule.dll." />
     <Error Condition="!Exists('$(GameAssembly)')"
@@ -61,6 +64,16 @@
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(GameManaged)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- The per-weapon panel docked under the camo editor. -->
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(GameManaged)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- The per-weapon choices file. The game ships this and the camo mod already uses it. -->
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(GameManaged)\Newtonsoft.Json.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <!-- Decal, ItemsWithDecals, DecalInfo, DecalRenderer: what sticky camo redraws. -->

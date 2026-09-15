@@ -61,20 +61,40 @@ namespace NoMagazineCamo.Client
                 "None: magazines are never painted.\n"
                 + "Stick to magazine: magazines wear the gun's camo, and it stays on them when a "
                 + "reload pulls them out of the camo's box.\n"
-                + "Takes effect immediately. Revolver and grenade launcher cylinders are never touched.");
+                + "Takes effect immediately. Revolver and grenade launcher cylinders are never touched.\n"
+                + "A weapon set to something other than Default in the camo editor ignores this.");
 
             if (!MagazineStencil.Resolve())
             {
                 return;
             }
 
+            MagazineChoices.Load();
             StickyCamo.Install();
             Harmony.CreateAndPatchAll(typeof(MagazineStencil), PluginGuid);
+            InstallEditorPanel();
 
             Enabled.SettingChanged += OnSettingChanged;
             MagazineCamo.SettingChanged += OnSettingChanged;
 
             Log.LogInfo("[NoMagazineCamo] loaded");
+        }
+
+        // Separately, and not fatally: without it the F12 setting still works, and so does every
+        // per-weapon choice already made -- there is just no way to change one in the editor.
+        private static void InstallEditorPanel()
+        {
+            try
+            {
+                Harmony.CreateAndPatchAll(typeof(EditorPanel), PluginGuid);
+            }
+            catch (Exception e)
+            {
+                Log.LogError(
+                    "[NoMagazineCamo] the camo editor's window could not be hooked, so the "
+                    + "per-weapon magazine setting has no panel. Weapons already set keep their "
+                    + $"setting, and the F12 setting still works.\n{e}");
+            }
         }
 
         private static void OnSettingChanged(object sender, EventArgs e)

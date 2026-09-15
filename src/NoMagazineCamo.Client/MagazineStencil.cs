@@ -150,15 +150,16 @@ namespace NoMagazineCamo.Client
 
             foreach (var magazine in All)
             {
-                // Sticky camo starts from clean too, and hands seated magazines back to the
-                // gun's decals on its next frame.
-                if (NoMagazineCamoPlugin.Enabled.Value)
+                // With the per-frame loop running, what each magazine gets depends on the weapon
+                // it is on, which only that loop knows. Hand them all back and let it decide on
+                // its next frame.
+                if (StickyCamo.Deciding || !NoMagazineCamoPlugin.Enabled.Value)
                 {
-                    magazine.Clean();
+                    magazine.Restore();
                 }
                 else
                 {
-                    magazine.Restore();
+                    magazine.Clean();
                 }
             }
         }
@@ -197,7 +198,10 @@ namespace NoMagazineCamo.Client
                 }
 
                 All.Add(magazine);
-                if (NoMagazineCamoPlugin.Enabled.Value)
+
+                // Only when there is no per-frame loop to do it per weapon. Without one there is
+                // no sticky camo either, so keeping every magazine clean is the whole mod.
+                if (!StickyCamo.Deciding && NoMagazineCamoPlugin.Enabled.Value)
                 {
                     magazine.Clean();
                 }

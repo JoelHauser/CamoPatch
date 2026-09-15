@@ -40,6 +40,12 @@ namespace NoMagazineCamo.Client
             public Owner Owner;
         }
 
+        private struct Still
+        {
+            public Matrix4x4 Last;
+            public int Frames;
+        }
+
         private sealed class Clone
         {
             public Material Material;
@@ -78,12 +84,29 @@ namespace NoMagazineCamo.Client
             new Dictionary<TransformLinks, Dictionary<Transform, TransformLinks.CachedTransform>>();
         private static readonly HashSet<int> ReportedNoRestPose = new HashSet<int>();
 
+        // Where a gun's magazine sits, once that has been established, by decal root. Shared
+        // across magazines: a fresh one handed in by a reload inherits the seat the one it
+        // replaces was watched in.
+        private static readonly Dictionary<Transform, Matrix4x4> Seats = new Dictionary<Transform, Matrix4x4>();
+
+        // How long each magazine has held still, while no seat is known for its gun yet.
+        private static readonly Dictionary<Transform, Still> Motion = new Dictionary<Transform, Still>();
+        private static readonly HashSet<int> LearnedSeat = new HashSet<int>();
+
+        // The loop earns its keep only when something, somewhere, is set to stick: that is the
+        // one answer that changes from frame to frame. With nothing sticky, every magazine just
+        // stays clean, and MagazineStencil's one-shot at spawn does that for free.
         private static bool Active =>
             _available
             && !_failed
             && NoMagazineCamoPlugin.Enabled.Value
-            && NoMagazineCamoPlugin.MagazineCamo.Value == MagazineCamoMode.StickToMagazine
+            && (NoMagazineCamoPlugin.MagazineCamo.Value == MagazineCamoMode.StickToMagazine
+                || MagazineChoices.AnyStick)
             && Camo.Plugin.Instance != null;
+
+        /// <summary>Whether this loop is the thing deciding what magazines get, rather than
+        /// MagazineStencil's one-shot at spawn.</summary>
+        internal static bool Deciding => Active;
 
         internal static void Install()
         {
@@ -245,14 +268,31 @@ namespace NoMagazineCamo.Client
                 if (!magazine.Transform.gameObject.activeInHierarchy
                     || !FindOwner(magazine.Transform, out var root, out var owner))
                 {
+                    // Not on a weapon the camo mod is drawing. Nothing would paint it either way.
                     magazine.Restore();
                     continue;
                 }
 
-                var rest = RestPose(root, magazine.Transform);
+                if (MagazineChoices.Resolve(owner.ItemId) == MagazineCamoMode.None)
+                {
+                    magazine.Clean();
+                    continue;
+                }
+
                 var now = root.worldToLocalMatrix * magazine.Transform.localToWorldMatrix;
+                if (!RestPose(root, magazine.Transform, now, out var rest))
+                {
+                    // Nothing knows where this magazine sits yet. Vanilla until a seated one
+                    // has been watched long enough to learn it.
+                    magazine.Restore();
+                    continue;
+                }
+
                 if (IsSeated(now, rest))
                 {
+                    // Seated is the one pose worth remembering: it is the answer for every
+                    // later magazine on this gun, including one that appears mid-reload.
+                    Seats[root] = now;
                     magazine.Restore();
                     continue;
                 }
@@ -314,12 +354,38 @@ namespace NoMagazineCamo.Client
             return false;
         }
 
-        // The magazine's pose in the decal root's space, with every bone between them put back
-        // where the game resets it to. A bone the game keeps no rest pose for is taken as it is.
-        private static Matrix4x4 RestPose(Transform root, Transform magazine)
+        // Where this magazine sits when it is seated, in the decal root's space.
+        //
+        // First choice is the weapon's own prefab data: the bone poses ResetPositions puts an
+        // animated weapon back to. On every weapon looked at so far that data holds nothing
+        // between the decal root and the magazine, so the second choice is to watch for it --
+        // a magazine that has held still for a few frames is a seated magazine, and its pose
+        // is the seat for every magazine that gun takes afterwards.
+        private static bool RestPose(Transform root, Transform magazine, Matrix4x4 now, out Matrix4x4 rest)
         {
-            var restPoses = RestPosesAbove(root);
-            var pose = Matrix4x4.identity;
+            // Seats first: it is a dictionary lookup, and once a gun has been seen with a
+            // seated magazine it answers this without walking anything.
+            if (Seats.TryGetValue(root, out rest))
+            {
+                return true;
+            }
+
+            if (FromPrefab(root, magazine, out rest))
+            {
+                return true;
+            }
+
+            return Learn(root, magazine, now, out rest);
+        }
+
+        // The magazine's pose with every bone between it and the root put back where the game
+        // resets it to. False unless at least one of those bones actually has a rest pose:
+        // without one this would rebuild the pose the magazine is already in, which reads as
+        // seated no matter where the magazine has got to.
+        private static bool FromPrefab(Transform root, Transform magazine, out Matrix4x4 rest)
+        {
+            var restPoses = RestPosesAbove(root, out var links);
+            rest = Matrix4x4.identity;
             var anyRestPose = false;
 
             for (var transform = magazine; transform != null && transform != root; transform = transform.parent)
@@ -334,23 +400,128 @@ namespace NoMagazineCamo.Client
                     anyRestPose = true;
                 }
 
-                pose = Matrix4x4.TRS(position, rotation, transform.localScale) * pose;
+                rest = Matrix4x4.TRS(position, rotation, transform.localScale) * rest;
             }
 
-            if (!anyRestPose && ReportedNoRestPose.Add(root.GetInstanceID()))
+            if (!anyRestPose)
             {
-                NoMagazineCamoPlugin.Log.LogWarning(
-                    $"[NoMagazineCamo] {root.root.name}: the game keeps no rest pose for anything between its "
-                    + "camo and its magazine, so a moving magazine can't be told from a seated one. Its "
-                    + "magazine takes camo as it would without this addon.");
+                ReportNoPrefabPose(root, magazine, links, restPoses);
             }
 
-            return pose;
+            return anyRestPose;
         }
 
-        private static Dictionary<Transform, TransformLinks.CachedTransform> RestPosesAbove(Transform root)
+        // A magazine that has not moved for this many frames is taken to be seated. Long enough
+        // that no part of a reload animation holds still through it.
+        private const int SeatedFrames = 12;
+
+        private static bool Learn(Transform root, Transform magazine, Matrix4x4 now, out Matrix4x4 rest)
         {
-            TransformLinks links = null;
+            Motion.TryGetValue(magazine, out var still);
+
+            if (still.Frames > 0 && IsSeated(now, still.Last))
+            {
+                still.Frames++;
+            }
+            else
+            {
+                still.Frames = 1;
+            }
+
+            still.Last = now;
+            Motion[magazine] = still;
+
+            if (still.Frames < SeatedFrames)
+            {
+                rest = Matrix4x4.identity;
+                return false;
+            }
+
+            if (LearnedSeat.Add(root.GetInstanceID()))
+            {
+                // One line a session at a level that reaches disk, then quiet: this fires per
+                // weapon, and a shared log is not the place to say the same thing forty times.
+                if (LearnedSeat.Count == 1)
+                {
+                    NoMagazineCamoPlugin.Log.LogInfo(
+                        $"[NoMagazineCamo] sticky magazine camo is live -- learned where {root.root.name}'s "
+                        + "magazine sits by watching it.");
+                }
+                else
+                {
+                    NoMagazineCamoPlugin.Log.LogDebug(
+                        $"[NoMagazineCamo] learned where {root.root.name}'s magazine sits.");
+                }
+            }
+
+            Seats[root] = now;
+            rest = now;
+            return true;
+        }
+
+        // Says which of the three ways this can come up empty actually happened. Debug, not a
+        // warning: it is expected on every weapon looked at so far, and nothing is wrong when it
+        // happens -- the seat gets learned by watching instead.
+        private static void ReportNoPrefabPose(
+            Transform root,
+            Transform magazine,
+            TransformLinks links,
+            Dictionary<Transform, TransformLinks.CachedTransform> restPoses)
+        {
+            if (!ReportedNoRestPose.Add(root.GetInstanceID()))
+            {
+                return;
+            }
+
+            string reason;
+            if (links == null)
+            {
+                reason = "no TransformLinks on or above its camo root";
+            }
+            else if (restPoses == null || restPoses.Count == 0)
+            {
+                reason = $"TransformLinks on '{links.name}' has an empty _cachedTransforms";
+            }
+            else
+            {
+                reason = $"TransformLinks on '{links.name}' caches {restPoses.Count} transform(s), none of them "
+                    + "between its camo root and its magazine";
+            }
+
+            NoMagazineCamoPlugin.Log.LogDebug(
+                $"[NoMagazineCamo] {root.root.name}: {reason}. Falling back to watching for a seated magazine.");
+
+            if (restPoses != null)
+            {
+                NoMagazineCamoPlugin.Log.LogDebug(
+                    $"[NoMagazineCamo] {root.root.name} cached: {string.Join(", ", Names(restPoses.Keys))}");
+            }
+
+            var chain = new List<string>();
+            for (var transform = magazine; transform != null && transform != root; transform = transform.parent)
+            {
+                chain.Add(transform.name);
+            }
+
+            NoMagazineCamoPlugin.Log.LogDebug(
+                $"[NoMagazineCamo] {root.root.name} magazine chain: {string.Join(" < ", chain.ToArray())} < {root.name}");
+        }
+
+        private static string[] Names(IEnumerable<Transform> transforms)
+        {
+            var names = new List<string>();
+            foreach (var transform in transforms)
+            {
+                names.Add(transform == null ? "<destroyed>" : transform.name);
+            }
+
+            return names.ToArray();
+        }
+
+        private static Dictionary<Transform, TransformLinks.CachedTransform> RestPosesAbove(
+            Transform root, out TransformLinks links)
+        {
+            links = null;
             for (var transform = root; transform != null && links == null; transform = transform.parent)
             {
                 transform.TryGetComponent(out links);
@@ -469,6 +640,7 @@ namespace NoMagazineCamo.Client
         private static readonly List<Camera> DeadCameras = new List<Camera>();
         private static readonly List<Camo.Decal> DeadDecals = new List<Camo.Decal>();
         private static readonly List<TransformLinks> DeadLinks = new List<TransformLinks>();
+        private static readonly List<Transform> DeadTransforms = new List<Transform>();
 
         private static void Prune()
         {
@@ -513,9 +685,30 @@ namespace NoMagazineCamo.Client
                 RestPoses.Remove(links);
             }
 
+            PruneTransforms(Seats);
+            PruneTransforms(Motion);
+
             DeadCameras.Clear();
             DeadDecals.Clear();
             DeadLinks.Clear();
+        }
+
+        private static void PruneTransforms<T>(Dictionary<Transform, T> table)
+        {
+            foreach (var pair in table)
+            {
+                if (pair.Key == null)
+                {
+                    DeadTransforms.Add(pair.Key);
+                }
+            }
+
+            foreach (var transform in DeadTransforms)
+            {
+                table.Remove(transform);
+            }
+
+            DeadTransforms.Clear();
         }
 
         private static void Fail(Exception e)
