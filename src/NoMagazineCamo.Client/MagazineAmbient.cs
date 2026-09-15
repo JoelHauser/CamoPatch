@@ -61,7 +61,7 @@ namespace NoMagazineCamo.Client
                     return;
                 }
 
-                if (!Prepare(source))
+                if (!EnsureMaterial(source))
                 {
                     return;
                 }
@@ -107,7 +107,10 @@ namespace NoMagazineCamo.Client
             }
         }
 
-        private static bool Prepare(Material source)
+        // Not named Prepare: that is one of the names Harmony reserves on a patch class
+        // (alongside Cleanup, TargetMethod and TargetMethods), and it will call it itself --
+        // with nulls -- and throw the whole class out when it fails.
+        private static bool EnsureMaterial(Material source)
         {
             if (_quad == null)
             {
