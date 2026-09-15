@@ -80,9 +80,9 @@ Two consequences worth keeping in mind:
 
 ## Status
 
-- **`Stick to magazine` is confirmed working in a raid.**
-- **The per-weapon panel and its file have not been tested.** Nor has `Enabled = false`,
-  nor the `None` mode since the per-weapon work landed.
+- **`Stick to magazine` and the per-weapon panel are both confirmed working in a raid.**
+- Still unexercised: `Enabled = false`, and the `None` mode since the per-weapon work
+  landed.
 - The Forge's addon guidelines (https://sp-mod.com/addon/guidelines/2658) are behind a
   login and **have not been read**. Check them before uploading.
 - The mod logs **one** line a session at default BepInEx levels once sticky camo works:

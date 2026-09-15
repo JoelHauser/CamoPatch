@@ -2,7 +2,7 @@
 
 An addon for [Weapon Camo And Stickers](https://github.com/7Bpencil/SPT.WeaponCamoAndStickers) that changes how camo treats magazines in SPT.
 
-> **Pre-release.** Sticky camo is confirmed working in a raid. The per-weapon panel is new and has not been tested yet.
+> **Pre-release.** Confirmed working in a raid against SPT 4.1.5 and Weapon Camo And Stickers 1.18.0. No release has been published yet.
 
 ## What it does
 
