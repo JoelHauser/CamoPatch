@@ -170,8 +170,9 @@ only exists in the patched assembly.
 
 ## Where this was left off
 
-2026-09-15: 1.1.0 -- F12 settings and sticky camo -- built against the patched 4.1.5
-Assembly-CSharp and the camo mod 1.19.0 release DLL. 1.0.0 (clean only, stencil 1) was
-built but never released. Installed to `C:\HUH\BepInEx\plugins\NoMagazineCamo`
-(built with `-GameAssembly` pointing at the patched copy, since the install had not been
-launched yet). Not committed, never run.
+2026-09-15: **1.0.0** -- F12 settings and sticky camo -- is the first release version,
+built against the patched 4.1.5 Assembly-CSharp and the camo mod 1.19.0 release DLL. It
+was numbered 1.1.0 for a while during development, after an earlier clean-only build
+(stencil 1, cylinders included) that was never released; nothing before 1.0.0 exists
+publicly. Installed to `C:\HUH\BepInEx\plugins\NoMagazineCamo`. Repo:
+https://github.com/JoelHauser/CamoPatch. Never run in a raid.
