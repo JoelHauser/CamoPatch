@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds Release and packs releases\NoMagazineCamo_V<ver>.zip.
+    Builds Release and packs dist\NoMagazineCamo_V<ver>.zip.
 
 .DESCRIPTION
     The zip is laid out to extract straight into an SPT folder:
@@ -34,12 +34,13 @@
     Also copy the DLL into BepInEx\plugins\NoMagazineCamo under SPTPath.
 
 .EXAMPLE
-    scripts\pack.ps1
-    scripts\pack.ps1 -SPTPath C:\HUH -Install
+    scripts\pack.ps1 -SPTPath D:\SPT
+    scripts\pack.ps1 -SPTPath D:\SPT -Install
 #>
 [CmdletBinding()]
 param(
-    [string]$SPTPath = "C:\HUH",
+    [Parameter(Mandatory = $true)]
+    [string]$SPTPath,
     [string]$CamoModDir,
     [string]$GameAssembly,
     [switch]$Install
@@ -101,10 +102,11 @@ Copy-Item $dll $pluginDir
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-$releases = Join-Path $root 'releases'
-New-Item -ItemType Directory -Force -Path $releases | Out-Null
+# dist\ is gitignored: releases are published through GitHub Releases, not committed.
+$dist = Join-Path $root 'dist'
+New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
-$zipPath = Join-Path $releases ("NoMagazineCamo_V{0}.zip" -f $version)
+$zipPath = Join-Path $dist ("NoMagazineCamo_V{0}.zip" -f $version)
 if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
 
 $zip = [System.IO.Compression.ZipFile]::Open($zipPath, 'Create')

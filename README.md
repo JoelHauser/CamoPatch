@@ -2,7 +2,7 @@
 
 An addon for [Weapon Camo And Stickers](https://github.com/7Bpencil/SPT.WeaponCamoAndStickers) that changes how camo treats magazines in SPT.
 
-> **Pre-release.** Built and checked against SPT 4.1.5 and Weapon Camo And Stickers 1.19.0, but not yet tested in a raid.
+> **Pre-release.** Sticky camo is confirmed working in a raid. The per-weapon panel is new and has not been tested yet.
 
 ## What it does
 
@@ -13,16 +13,18 @@ This addon gives you two choices:
 - **Keep magazines clean.** Presets, random bot camos and stickers stay off magazines, and the rest of the gun is painted as usual.
 - **Make the camo stick.** Magazines wear the gun's camo and stickers, and keep them all the way through a reload.
 
+You can pick either one for **each weapon separately**, from a panel under the camo editor, so it doesn't have to be all of your guns or none of them.
+
 Presets don't need editing, and nothing is saved to your profile. Remove the addon and everything looks the way it did before.
 
 ## Requirements
 
 - SPT 4.1.5
-- [Weapon Camo And Stickers](https://github.com/7Bpencil/SPT.WeaponCamoAndStickers) 1.19.0
+- [Weapon Camo And Stickers](https://github.com/7Bpencil/SPT.WeaponCamoAndStickers) 1.18.0 or newer — tested on 1.18.0
 
 ## Install
 
-1. Download `NoMagazineCamo_V1.0.0.zip` from the [`releases`](releases) folder.
+1. Download the latest zip from [Releases](https://github.com/JoelHauser/CamoPatch/releases).
 2. Extract it into your SPT folder. You should end up with:
 
    ```
@@ -40,6 +42,21 @@ Press **F12** and open **No Magazine Camo**. Both settings apply immediately.
 | Enabled | On | Off: magazines take camo exactly as they would without this addon. |
 | Camo on magazines | None | **None**: magazines are never painted.<br>**Stick to magazine**: magazines wear the gun's camo and stickers, and keep them during reloads. |
 
+### Per weapon
+
+Open the camo editor on a weapon and a **Magazine** panel appears under it:
+
+| Choice | What it does |
+| --- | --- |
+| Keep clean | This weapon's magazine is never painted, whatever F12 says. |
+| Stick | This weapon's camo stays on its magazine through a reload, whatever F12 says. |
+
+Until you pick one, the weapon just follows the F12 setting, and the panel shows you which way that falls. Picking either button sets it on that weapon from then on, and F12 no longer moves it.
+
+The choice belongs to that one weapon, not to the weapon type, and it stays put when you switch the weapon's camo preset. Weapons you never touch are not recorded at all.
+
+Choices live in `BepInEx/config/NoMagazineCamo/magazines.json`. Delete a weapon's line to put it back on the F12 setting, or delete the file to reset every weapon.
+
 Revolver and grenade launcher cylinders are never affected. They keep their camo like the rest of the gun.
 
 ## Performance
@@ -51,33 +68,35 @@ Revolver and grenade launcher cylinders are never affected. They keep their camo
 
 - Client-only. No server mod.
 - Works with Fika. Each client only changes how magazines look on that client.
+- Nothing belonging to Weapon Camo And Stickers is modified — not its files, its presets, or its saved data. This addon only reads.
 
 ## Known limitations
 
-- **Some guns may not stick.** Sticky camo works out how far a magazine has moved from its seated position using data the game stores for each weapon. If a weapon doesn't store that position for its magazine, its magazine behaves as if the addon were off in sticky mode, and the BepInEx log names the weapon.
+- **A gun you pick up mid-reload won't stick until the reload finishes.** Sticky camo learns where a gun's magazine sits by watching a seated one for a moment. Until it has, that gun's magazine behaves as if the addon were off in sticky mode.
 - **Two magazines in motion at once.** When the old and new magazines are both out mid-reload, camo meant for one can briefly show on the other if they pass close together.
+- **A Weapon Camo And Stickers update could break sticky camo.** It reads a few of that mod's internals to know what to redraw. If they move, sticky camo reports once in the log and turns itself off, leaving "keep magazines clean" working and your magazines' materials exactly as they shipped.
 - **Lighting.** If a magazine looks lit differently from the rest of the gun in first person, please open an issue with a screenshot.
 
 ## How it works
 
 Weapon Camo And Stickers only draws camo on surfaces marked as weapon parts. The addon gives magazines a different mark that none of that camo matches, the same way Weapon Camo And Stickers already keeps paint off your hands.
 
-With **Stick to magazine**, a seated magazine keeps its normal mark and is painted by the gun's own camo. Once a reload moves it, the addon switches its mark and redraws the gun's camo and stickers on it, shifted by exactly how far the magazine has moved.
+With **Stick to magazine**, a seated magazine keeps its normal mark and is painted by the gun's own camo. Once a reload moves it, the addon switches its mark and redraws the gun's camo and stickers on it, shifted by exactly how far the magazine has moved. It works out where "seated" is for a gun by watching its magazine while it is at rest.
 
-[`CLAUDE.md`](CLAUDE.md) has the full technical notes: which game code is hooked, what was verified, and what is still untested.
+**[`docs/internals.md`](docs/internals.md)** is the full version: the stencil trick, where the seated pose comes from, and a complete list of everything this reaches into inside Weapon Camo And Stickers.
 
 ## Building from source
 
 You need:
 
 - The .NET SDK (any version that can build `net472`)
-- An SPT 4.1.5 install with Weapon Camo And Stickers 1.19.0 installed
+- An SPT 4.1.5 install with Weapon Camo And Stickers installed
 - **The game started at least once through the SPT Launcher.** The Launcher patches the game's `Assembly-CSharp.dll` on first launch, and the addon has to compile against the patched version.
 
 Then, from PowerShell:
 
 ```powershell
-scripts\pack.ps1 -SPTPath "C:\path\to\SPT"            # build and pack releases\NoMagazineCamo_V<version>.zip
+scripts\pack.ps1 -SPTPath "C:\path\to\SPT"            # build and pack dist\NoMagazineCamo_V<version>.zip
 scripts\pack.ps1 -SPTPath "C:\path\to\SPT" -Install   # also copy the DLL into that install
 ```
 
