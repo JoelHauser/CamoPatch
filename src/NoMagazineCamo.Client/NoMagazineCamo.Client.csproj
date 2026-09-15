@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net472 because that is what the game's mono runtime loads. -->
+    <TargetFramework>net472</TargetFramework>
+    <RootNamespace>NoMagazineCamo.Client</RootNamespace>
+    <AssemblyName>NoMagazineCamo.Client</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <Version>1.1.0</Version>
+
+    <SPTPath Condition="'$(SPTPath)' == ''">C:\HUH</SPTPath>
+    <GameManaged>$(SPTPath)\EscapeFromTarkov_Data\Managed</GameManaged>
+    <BepInExCore>$(SPTPath)\BepInEx\core</BepInExCore>
+
+    <!-- The Assembly-CSharp to compile against. What the game runs is the one in Managed
+         *after* the SPT Launcher applies SPT_Data\Launcher\Patches\SPT-core\...\Assembly-CSharp.dll.delta,
+         which renames a lot of obfuscated types. An install that has never been launched
+         still holds the unpatched original, so point this at a patched copy until it has. -->
+    <GameAssembly Condition="'$(GameAssembly)' == ''">$(GameManaged)\Assembly-CSharp.dll</GameAssembly>
+
+    <!-- Wherever Weapon Camo And Stickers is installed. Pass -p:CamoModDir=... to build
+         against a copy that is not installed into SPTPath. -->
+    <CamoModDir Condition="'$(CamoModDir)' == ''">$(SPTPath)\BepInEx\plugins\7Bpencil.WeaponCamoAndStickers</CamoModDir>
+
+    <AssemblySearchPaths>$(GameManaged);$(AssemblySearchPaths)</AssemblySearchPaths>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <Target Name="ValidateSPTPath" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(GameManaged)\UnityEngine.CoreModule.dll')"
+           Text="SPTPath ('$(SPTPath)') is not an SPT install root -- no EscapeFromTarkov_Data\Managed\UnityEngine.CoreModule.dll." />
+    <Error Condition="!Exists('$(GameAssembly)')"
+           Text="No Assembly-CSharp.dll at '$(GameAssembly)'." />
+    <Error Condition="!Exists('$(BepInExCore)\BepInEx.dll')"
+           Text="No BepInEx.dll under '$(BepInExCore)'. The plugin must be built against the install it will run on." />
+    <Error Condition="!Exists('$(CamoModDir)\7Bpencil.WeaponCamoAndStickers.dll')"
+           Text="No 7Bpencil.WeaponCamoAndStickers.dll under '$(CamoModDir)'. Install Weapon Camo And Stickers into the SPT install, or pass -p:CamoModDir=..." />
+  </Target>
+
+  <!-- Deliberately no spt-* references: SPT's PluginValidator only rejects a plugin
+       whose spt-* references disagree with the running server, and one with none is
+       skipped outright. Harmony comes from BepInEx itself. -->
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>$(BepInExCore)\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(BepInExCore)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- AssetPoolObject, ItemTemplate, TransformLinks. -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(GameAssembly)</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(GameManaged)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(GameManaged)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Decal, ItemsWithDecals, DecalInfo, DecalRenderer: what sticky camo redraws. -->
+    <Reference Include="7Bpencil.WeaponCamoAndStickers">
+      <HintPath>$(CamoModDir)\7Bpencil.WeaponCamoAndStickers.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
