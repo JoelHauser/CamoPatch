@@ -16,7 +16,8 @@ src/NoMagazineCamo.Client/
   StickyCamo.cs             the per-frame loop: seat test, stencil switching, the extra decal draws
   MagazineChoice.cs         the per-weapon override and its file
   EditorPanel.cs            the panel docked under the camo editor
-  MagazineAmbient.cs        the ambient quad that relights magazines on the clean stencil
+  StencilRestore.cs         puts the magazine's stencil back before the lighting reads it
+  MagazineAmbient.cs        fallback ambient quad, for when the restore is not possible
 scripts/pack.ps1            build + zip into dist/
 docs/internals.md           how it works, for other modders
 docs/mod-page.md            draft text for the mod page
@@ -81,9 +82,13 @@ Two consequences worth keeping in mind:
 
 ## Status
 
-- **`Stick to magazine` and the per-weapon panel are both confirmed working in a raid.**
+- **`Stick to magazine`, the per-weapon panel and the stencil restore are all confirmed
+  working in a raid.**
 - Still unexercised: `Enabled = false`, and the `None` mode since the per-weapon work
   landed.
+- **The stencil is a lighting category, not a free tag.** Measured: a magazine is lit
+  correctly at 2 and dark at 0, 1 *and* 3. Do not go looking for a spare value again --
+  see `docs/internals.md`.
 - The Forge's addon guidelines (https://sp-mod.com/addon/guidelines/2658) are behind a
   login and **have not been read**. Check them before uploading.
 - The mod logs **one** line a session at default BepInEx levels once sticky camo works:

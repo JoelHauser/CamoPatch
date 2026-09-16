@@ -43,6 +43,7 @@ namespace NoMagazineCamo.Client
         internal static ConfigEntry<bool> Enabled;
         internal static ConfigEntry<MagazineCamoMode> MagazineCamo;
 
+
         private void Awake()
         {
             Log = Logger;
@@ -79,6 +80,7 @@ namespace NoMagazineCamo.Client
             MagazineCamo.SettingChanged += OnSettingChanged;
 
             Log.LogInfo("[NoMagazineCamo] loaded");
+            LogState("startup");
         }
 
         // Separately, and not fatally: without it the F12 setting still works, and so does every
@@ -118,6 +120,15 @@ namespace NoMagazineCamo.Client
         {
             StickyCamo.Reset();
             MagazineStencil.ApplySettings();
+            LogState("changed");
+        }
+
+        // Stamps the settings into the log so a report of what something looked like can be lined
+        // up against what was actually in effect at the time. Whether it looked right is still a
+        // thing only eyes can answer.
+        internal static void LogState(string why)
+        {
+            Log.LogInfo($"[NoMagazineCamo] settings {why}: Enabled={Enabled.Value}, Camo={MagazineCamo.Value}");
         }
     }
 }

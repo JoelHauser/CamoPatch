@@ -108,6 +108,31 @@ namespace NoMagazineCamo.Client
         /// MagazineStencil's one-shot at spawn.</summary>
         internal static bool Deciding => Active;
 
+        // A buffer is wanted for either job: drawing a magazine's camo onto it, or putting its
+        // stencil back before the lighting reads it. The second happens in the keep-clean mode
+        // too, where the loop above never runs -- a magazine sits moved off the gun's stencil
+        // permanently there, so it needs putting back on every frame.
+        private static bool Wanted =>
+            _available
+            && !_failed
+            && NoMagazineCamoPlugin.Enabled.Value
+            && Camo.Plugin.Instance != null
+            && (Draws.Count > 0 || AnyMoved());
+
+        private static bool AnyMoved()
+        {
+            var magazines = MagazineStencil.All;
+            for (var i = 0; i < magazines.Count; i++)
+            {
+                if (magazines[i].Alive && magazines[i].IsMoved)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         internal static void Install()
         {
             try
@@ -153,7 +178,7 @@ namespace NoMagazineCamo.Client
             {
                 Refresh();
 
-                if (Draws.Count == 0 || Buffers.ContainsKey(camera) || !CamoDrawsOn(camera))
+                if (!Wanted || Buffers.ContainsKey(camera) || !CamoDrawsOn(camera))
                 {
                     return;
                 }
@@ -180,7 +205,7 @@ namespace NoMagazineCamo.Client
             try
             {
                 buffer.Clear();
-                if (Draws.Count == 0 || !Active || !CamoDrawsOn(camera))
+                if (!Wanted || !CamoDrawsOn(camera))
                 {
                     return;
                 }
@@ -213,6 +238,11 @@ namespace NoMagazineCamo.Client
                 {
                     buffer.ReleaseTemporaryRT(NormalsCopy);
                 }
+
+                // Last in this buffer, and this buffer is last at BeforeLighting: every magazine
+                // that was moved off its own stencil goes back onto it, so the lighting passes
+                // that follow see the weapon's value rather than the one the camo passes needed.
+                StencilRestore.Queue(buffer, MagazineStencil.All);
             }
             catch (Exception e)
             {

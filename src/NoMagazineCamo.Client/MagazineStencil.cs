@@ -14,28 +14,45 @@ namespace NoMagazineCamo.Client
         public readonly AssetPoolObject PoolObject;
         public readonly Transform Transform;
 
+        /// <summary>The renderers this magazine draws with, for redrawing it into the stencil
+        /// buffer once the camo pass no longer needs it moved off the gun's value.</summary>
+        public readonly Renderer[] Renderers;
+
+        /// <summary>The stencil this magazine shipped with -- in practice 2, the weapon's, which
+        /// is also the lighting category a weapon in hands belongs to.</summary>
+        public readonly int OriginalStencil;
+
         private readonly Material[] _materials;
         private readonly float[] _originals;
 
         // NaN while the materials hold what they shipped with.
         private float _applied = float.NaN;
 
-        public Magazine(AssetPoolObject poolObject, List<Material> materials)
+        public Magazine(AssetPoolObject poolObject, List<Material> materials, List<Renderer> renderers)
         {
             PoolObject = poolObject;
             Transform = poolObject.transform;
+            Renderers = renderers.ToArray();
             _materials = materials.ToArray();
             _originals = new float[_materials.Length];
             for (var i = 0; i < _materials.Length; i++)
             {
                 _originals[i] = _materials[i].GetFloat(MagazineStencil.StencilTypeId);
             }
+
+            // They are all the same in practice; the first is as good an answer as any, and 2 is
+            // the right fallback for a weapon part.
+            OriginalStencil = _originals.Length > 0 ? Mathf.RoundToInt(_originals[0]) : 2;
         }
 
         // Unity's null: a pool object destroyed along with its pool compares equal to null.
         public bool Alive => PoolObject != null;
 
         public bool HasMaterials => _materials.Length > 0;
+
+        /// <summary>Whether this magazine is currently moved off the stencil it shipped with, and
+        /// so needs putting back before the lighting passes read it.</summary>
+        public bool IsMoved => !float.IsNaN(_applied);
 
         /// <summary>Out of reach of every decal the camo mod draws by default.</summary>
         public void Clean()
@@ -116,6 +133,7 @@ namespace NoMagazineCamo.Client
         private static readonly HashSet<int> Seen = new HashSet<int>();
 
         private static readonly List<Renderer> Renderers = new List<Renderer>();
+        private static readonly List<Renderer> Used = new List<Renderer>();
         private static readonly List<Material> Materials = new List<Material>();
 
         private static bool _failed;
@@ -222,6 +240,7 @@ namespace NoMagazineCamo.Client
         private static Magazine Collect(AssetPoolObject poolObject)
         {
             Materials.Clear();
+            Used.Clear();
             Renderers.Clear();
             poolObject.GetComponentsInChildren(true, Renderers);
 
@@ -231,6 +250,8 @@ namespace NoMagazineCamo.Client
                 {
                     continue;
                 }
+
+                Used.Add(renderer);
 
                 // Copies, not the shared asset. Nothing guarantees a magazine a material of its
                 // own, and changing a shared one would change whatever else on the gun uses it.
@@ -244,7 +265,9 @@ namespace NoMagazineCamo.Client
             }
 
             Renderers.Clear();
-            return new Magazine(poolObject, Materials);
+            var magazine = new Magazine(poolObject, Materials, Used);
+            Used.Clear();
+            return magazine;
         }
 
         private static bool CarriesStencil(Material[] materials)

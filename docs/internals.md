@@ -155,7 +155,8 @@ Private, read by name through Harmony's `AccessTools`:
 | `Plugin.DecalRenderer` → `DecalRenderer.CommandBuffers` | to know which cameras decals are drawn on |
 
 In the game itself, beyond `AssetPoolObject.OnGetFromPool`, a postfix on
-`AmbientHighlight.UpdateAmbientBuffer` adds the ambient quad described above.
+`AmbientHighlight.UpdateAmbientBuffer` adds the fallback ambient quad described above,
+and `AmbientHighlight.StencilType` / `GetQuadMesh` are read for it.
 
 `CanCameraSeeDecals` is deliberately **not** copied: it goes through
 `EFT.CameraControl.CameraManager`, which only exists under that name in the
@@ -177,27 +178,50 @@ working. If the per-frame loop or the panel throws, it reports once, reverts wha
 changed, and goes quiet — the camo mod is never left in a modified state, and a magazine's
 materials are always restored to the stencil they shipped with.
 
-## Ambient light on the clean stencil
+## The stencil is a lighting category, not a free tag
 
-The stencil is not only the camo mod's lever, and this is the part worth knowing before
-copying the trick. `AmbientHighlight.UpdateAmbientBuffer` reads the same `_StencilType`
-property and applies the game's ambient as **one full-screen quad per category** --
-Static 0, Characters 1, Hands 2 -- each stencil-tested, each with a multiplier lerped
-between its min and max along an intensity curve driven by the sun's angle.
+**This is the part worth knowing before copying the trick, and it cost the most to find.**
 
-There is no category 3. A magazine moved onto the clean stencil therefore falls out of
-every ambient quad and is left unlit, which is visible as the magazine's lighting
-changing the moment a reload starts, and permanently in the keep-clean mode.
+The values in `GetItemStencilType` are not arbitrary tags chosen to keep decals apart.
+They are the game's own lighting categories -- `AmbientHighlight.StencilType` names 0
+Static, 1 Characters, 2 Hands -- and each item type is assigned the one it genuinely
+belongs to. Armour is worn on a character, so it is Characters. A weapon is in your
+hands, so it is Hands. Decals separating cleanly is a *consequence* of correct
+categorisation, not the reason for it.
 
-So one more quad is added, matching the Hands entries -- the category a weapon is in --
-with the stencil set to 3, queued onto the game's own ambient command buffer after its
-own quads so it inherits the blend modes and render target already set up there.
+So there is no spare value. Measured in first person, a magazine is lit correctly at 2
+and at nothing else: **0, 1 and 3 all render it dark.** Moving it off 2 to keep camo away
+from it cannot be left standing by the time the lighting runs.
 
-It draws through a **copy** of `AmbientMaterial`. That is not tidiness: a `CommandBuffer`
-holds a material by reference rather than by value, and the game mutates that material's
-stencil inside the loop that queues its own quads. Setting the stencil on the game's own
-material here would change every quad it had already queued and take the world's ambient
-light with it.
+It does not have to be. The stencil buffer is just a buffer, and the passes are ordered:
+
+```
+G-buffer          the magazine writes the clean stencil, 3
+BeforeLighting    the camo mod's decals, then ours, then the restore below
+the lighting passes
+AfterLighting     AmbientHighlight, one stencil-tested full-screen quad per category
+```
+
+`StencilRestore` appends to the end of the same command buffer the carried decals were
+drawn from -- which is itself added after the camo mod's -- and draws the magazine's own
+renderers with `Comp Always` / `Pass Replace` / `ColorMask 0`, writing 2 back. The decal
+passes see 3; every lighting pass after it sees 2.
+
+The material is **`UI/Default`**, the one stock shader that exposes its whole stencil
+state as properties (`_Stencil`, `_StencilComp`, `_StencilOp`, `_StencilReadMask`,
+`_StencilWriteMask`) alongside `_ColorMask`, so this needs no shader of its own. It takes
+its depth test from the `unity_GUIZTestMode` global, which is set to `LessEqual` around
+the draws and back afterwards -- left at its usual `Always`, a magazine would write its
+stencil over whatever is in front of it, including the arms the camo mod deliberately
+keeps on a different value.
+
+`MagazineAmbient` is the fallback for when that is not possible: if `UI/Default` cannot
+be found, the stencil stays at 3 and an extra ambient quad matching the Hands entries is
+added to `AmbientHighlight`'s own buffer instead, through a **copy** of
+`AmbientMaterial`. That copy is load-bearing rather than tidy -- a `CommandBuffer` holds
+a material by reference, and the game mutates that material's stencil inside the loop
+queueing its own quads, so setting it there would change every quad already queued and
+take the world's ambient light with it.
 
 ## Logging
 

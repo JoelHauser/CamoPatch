@@ -52,6 +52,14 @@ namespace NoMagazineCamo.Client
                 return;
             }
 
+            // Only when the stencil cannot be put back. With StencilRestore working, a magazine is
+            // on the weapon's own stencil by the time this runs and already takes the weapon's
+            // ambient -- an extra quad for a value nothing is on would light nothing.
+            if (StencilRestore.Available)
+            {
+                return;
+            }
+
             try
             {
                 var settings = __instance._highlightSettings;
