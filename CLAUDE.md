@@ -1,7 +1,7 @@
 # No Magazine Camo — working notes
 
 An addon for 7Bpencil's **Weapon Camo And Stickers** that changes what camo does to
-magazines. Client-only BepInEx plugin, two Harmony postfixes, **no `spt-*` references**.
+magazines. Client-only BepInEx plugin, three Harmony postfixes, **no `spt-*` references**.
 
 **[`docs/internals.md`](docs/internals.md) is the real document** — how it works, and
 every place it reaches into the camo mod. Read that first. This file is only the things
@@ -13,7 +13,8 @@ you need in order to *work on* the repo.
 src/NoMagazineCamo.Client/
   NoMagazineCamoPlugin.cs   BepInPlugin, hard dependency on the camo mod, the two F12 settings
   MagazineStencil.cs        finds magazines as the pool hands them out; clean/restore their materials
-  StickyCamo.cs             the per-frame loop: seat test, stencil switching, the extra decal draws
+  StickyCamo.cs             the per-frame loop: seat test, stencil switching, the extra decal draws,
+                            and the buffer the restore below is appended to
   MagazineChoice.cs         the per-weapon override and its file
   EditorPanel.cs            the panel docked under the camo editor
   StencilRestore.cs         puts the magazine's stencil back before the lighting reads it
@@ -33,6 +34,12 @@ scripts\pack.ps1 -SPTPath <install>                 # build, zip into dist\
 scripts\pack.ps1 -SPTPath <install> -Install        # also copy the DLL into that install
 scripts\pack.ps1 -SPTPath <install> -CamoModDir <dir> -GameAssembly <patched Assembly-CSharp.dll>
 ```
+
+Built against Weapon Camo And Stickers **1.19.0**. The floor is **1.18.0** --
+`CamoEditor.CalculateUIScaleMatrix`, which the per-weapon panel uses, does not exist in
+1.17.0; everything else it touches is present from 1.17.0 on. Check the installed version
+with `(Get-Item <dll>).VersionInfo.FileVersion`, and what a build actually linked against
+with Cecil's `AssemblyReferences` — a stale reference is invisible otherwise.
 
 Releases are published through GitHub Releases. No binaries are committed.
 
@@ -79,6 +86,14 @@ Two consequences worth keeping in mind:
   `spt-*` references disagree with the running server, and one with none is skipped
   outright. Harmony comes from BepInEx itself.
 - Never modify the installed camo mod or its data. This addon is read-only against it.
+- **`Prepare`, `Cleanup`, `TargetMethod` and `TargetMethods` are reserved names on a
+  `[HarmonyPatch]` class.** Harmony calls them itself, passing nulls for arguments it does
+  not recognise, and throws the whole class out if one fails — reported as a patching
+  exception rather than as your bug. A private helper named `Prepare` cost a full
+  build-and-test cycle here, with the patch silently never applying.
+- A `CommandBuffer` holds a **material by reference, not by value**. Mutating a material
+  the game also queues draws with rewrites its already-queued draws, which is why both the
+  ambient quad and the decal clones draw through copies.
 
 ## Status
 
@@ -91,8 +106,12 @@ Two consequences worth keeping in mind:
   see `docs/internals.md`.
 - The Forge's addon guidelines (https://sp-mod.com/addon/guidelines/2658) are behind a
   login and **have not been read**. Check them before uploading.
-- The mod logs **one** line a session at default BepInEx levels once sticky camo works:
-  `sticky magazine camo is live`. Everything else is `Debug` — per-weapon seat learning,
-  which of the three ways the prefab pose came up empty, the cached transform names and
-  the magazine's bone chain. `Debug` is **not** in `LogLevels` in a stock `BepInEx.cfg`,
-  so add it under `[Logging.Disk]` before asking anyone for a log.
+- At default BepInEx levels the mod says little: `loaded`, one `settings` line (repeated
+  only when an F12 setting changes), the count of weapons with their own choice, and then
+  at most two more, once each — `putting magazine stencils back before lighting` and
+  `sticky magazine camo is live`. Those last two are the ones worth asking for: they mean
+  the restore found `UI/Default` and that a gun's seat was learned.
+- Everything else is `Debug` — per-weapon seat learning, which of the three ways the
+  prefab pose came up empty, the cached transform names and the magazine's bone chain.
+  `Debug` is **not** in `LogLevels` in a stock `BepInEx.cfg`, so add it under
+  `[Logging.Disk]` before asking anyone for a log.
