@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using BepInEx;
 using BepInEx.Configuration;
@@ -32,7 +32,7 @@ namespace NoMagazineCamo.Client
     {
         public const string PluginGuid = "com.mybutthasarash.nomagazinecamo";
         public const string PluginName = "No Magazine Camo";
-        public const string PluginVersion = "1.0.0";
+        public const string PluginVersion = "1.1.0";
 
         // The camo mod's own BepInPlugin GUID, read out of its source. Hard: without it
         // there is no camo to change, and sticky camo reads its decals directly.

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <!-- net472 because that is what the game's mono runtime loads. -->
@@ -7,7 +7,7 @@
     <AssemblyName>NoMagazineCamo.Client</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
 
     <!-- Required. There is no sensible default: the plugin is compiled against the game's
          own assemblies, so this decides which EFT build it will load on. -->
