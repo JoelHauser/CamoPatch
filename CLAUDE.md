@@ -91,6 +91,14 @@ Two consequences worth keeping in mind:
   not recognise, and throws the whole class out if one fails — reported as a patching
   exception rather than as your bug. A private helper named `Prepare` cost a full
   build-and-test cycle here, with the patch silently never applying.
+- **The carried decals go at `CameraEvent.BeforeReflections`, not `BeforeLighting`.** That
+  is the event the camo mod uses, and the reason is the stencil: Unity's deferred
+  reflections pass runs between the two and takes the stencil buffer for its own probe
+  culling, so a decal cube drawn after it tests `Comp Equal 3` against bits that are no
+  longer the camo mod's categories. Background geometry then matches and takes a
+  magazine-sized box of camo albedo painted onto the world. The stencil restore still has
+  to be at `BeforeLighting`, so the two jobs are two buffers on two events. Shipped in
+  1.1.0; `docs/internals.md` has the full ordering.
 - A `CommandBuffer` holds a **material by reference, not by value**. Mutating a material
   the game also queues draws with rewrites its already-queued draws, which is why both the
   ambient quad and the decal clones draw through copies.

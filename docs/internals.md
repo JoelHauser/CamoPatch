@@ -82,10 +82,18 @@ Once per frame, on the first camera's `onPreCull`:
    Not seated: set it to stencil 3 and queue a draw.
 
 Then per camera, on `onPreRender`, into a command buffer added only to a camera that
-**already carries one of `DecalRenderer.CommandBuffers`** — so it is always ordered after
-the camo mod's own — every visible decal is drawn again with the decal root's matrix
-replaced by `magazine.localToWorld * inverse(seatedPose)`, mirrors included, through a
-per-decal material clone refreshed once a frame and set to stencil 3.
+**already carries one of `DecalRenderer.CommandBuffers`**, on **`BeforeReflections`** —
+the event that mod uses — so it is always ordered after the camo mod's own. Every visible
+decal is drawn again with the decal root's matrix replaced by
+`magazine.localToWorld * inverse(seatedPose)`, mirrors included, through a per-decal
+material clone refreshed once a frame and set to stencil 3.
+
+The event matters. `BeforeLighting` looks like the natural place — it is where the
+restore below has to happen — but Unity's deferred reflections pass runs in between and
+uses the stencil buffer for its own probe culling. A decal cube drawn after it is testing
+`Comp Equal` against a stencil whose low two bits are no longer the camo mod's
+categories, so background geometry can match 3 and take a magazine-sized box of camo
+albedo painted onto it. The two jobs therefore go in two buffers on two events.
 
 At the seated pose that replacement matrix collapses to exactly the decal root's own
 `localToWorldMatrix`, so the handover in and out of a reload is seamless by construction
@@ -196,16 +204,18 @@ from it cannot be left standing by the time the lighting runs.
 It does not have to be. The stencil buffer is just a buffer, and the passes are ordered:
 
 ```
-G-buffer          the magazine writes the clean stencil, 3
-BeforeLighting    the camo mod's decals, then ours, then the restore below
+G-buffer            the magazine writes the clean stencil, 3
+BeforeReflections   the camo mod's decals, then ours
+the deferred reflections pass, which takes the stencil buffer for its own culling
+BeforeLighting      the restore below
 the lighting passes
-AfterLighting     AmbientHighlight, one stencil-tested full-screen quad per category
+AfterLighting       AmbientHighlight, one stencil-tested full-screen quad per category
 ```
 
-`StencilRestore` appends to the end of the same command buffer the carried decals were
-drawn from -- which is itself added after the camo mod's -- and draws the magazine's own
-renderers with `Comp Always` / `Pass Replace` / `ColorMask 0`, writing 2 back. The decal
-passes see 3; every lighting pass after it sees 2.
+`StencilRestore` has a command buffer of its own at `BeforeLighting`, on the same cameras,
+and draws the magazine's own renderers with `Comp Always` / `Pass Replace` /
+`ColorMask 0`, writing 2 back. Every pass that wants 3 has run by then; every lighting
+pass after it sees 2.
 
 The material is **`UI/Default`**, the one stock shader that exposes its whole stencil
 state as properties (`_Stencil`, `_StencilComp`, `_StencilOp`, `_StencilReadMask`,

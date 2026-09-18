@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
@@ -21,8 +21,17 @@ namespace NoMagazineCamo.Client
     /// would paint them either way.
     ///
     /// Drawn the way the camo mod draws its own decals (DecalRenderer.cs, MIT): a cube per
-    /// decal into GBuffer0 before lighting, from a command buffer added after the camo mod's
-    /// on exactly the cameras it draws on.
+    /// decal into GBuffer0 at BeforeReflections, from a command buffer added after the camo
+    /// mod's on exactly the cameras it draws on.
+    ///
+    /// BeforeReflections, not BeforeLighting, and that is not a detail. The decal shader tests
+    /// `Ref [_StencilType] ReadMask 3 Comp Equal` against the stencil buffer as the G-buffer
+    /// pass left it, and Unity's deferred reflections pass sits in between and uses that same
+    /// buffer for its own probe culling. Drawn after it, the cubes compare against a stencil
+    /// whose low two bits are no longer the camo mod's categories -- background geometry can
+    /// match 3 and take a magazine-sized box of camo albedo, which is exactly what it looks
+    /// like. The stencil restore still belongs at BeforeLighting, so the two jobs go in two
+    /// buffers on two events rather than one buffer doing both.
     /// </summary>
     internal static class StickyCamo
     {
@@ -78,7 +87,11 @@ namespace NoMagazineCamo.Client
 
         private static readonly Dictionary<Transform, Owner> Roots = new Dictionary<Transform, Owner>();
         private static readonly List<Draw> Draws = new List<Draw>();
-        private static readonly Dictionary<Camera, CommandBuffer> Buffers = new Dictionary<Camera, CommandBuffer>();
+        // Two per camera, on two events: the decal cubes alongside the camo mod's own at
+        // BeforeReflections, and the stencil restore at BeforeLighting, once every pass that
+        // reads the clean stencil has run and before the lighting passes read it back.
+        private static readonly Dictionary<Camera, CommandBuffer> DecalBuffers = new Dictionary<Camera, CommandBuffer>();
+        private static readonly Dictionary<Camera, CommandBuffer> RestoreBuffers = new Dictionary<Camera, CommandBuffer>();
         private static readonly Dictionary<Camo.Decal, Clone> Clones = new Dictionary<Camo.Decal, Clone>();
         private static readonly Dictionary<TransformLinks, Dictionary<Transform, TransformLinks.CachedTransform>> RestPoses =
             new Dictionary<TransformLinks, Dictionary<Transform, TransformLinks.CachedTransform>>();
@@ -166,7 +179,12 @@ namespace NoMagazineCamo.Client
         {
             Draws.Clear();
             _refreshedFrame = -1;
-            foreach (var buffer in Buffers.Values)
+            foreach (var buffer in DecalBuffers.Values)
+            {
+                buffer.Clear();
+            }
+
+            foreach (var buffer in RestoreBuffers.Values)
             {
                 buffer.Clear();
             }
@@ -178,16 +196,22 @@ namespace NoMagazineCamo.Client
             {
                 Refresh();
 
-                if (!Wanted || Buffers.ContainsKey(camera) || !CamoDrawsOn(camera))
+                if (!Wanted || DecalBuffers.ContainsKey(camera) || !CamoDrawsOn(camera))
                 {
                     return;
                 }
 
-                // Only ever added to a camera that already carries the camo mod's buffer, so this
-                // one always runs after it.
-                var buffer = new CommandBuffer { name = "[NoMagazineCamo] Sticky magazine camo" };
-                camera.AddCommandBuffer(CameraEvent.BeforeLighting, buffer);
-                Buffers.Add(camera, buffer);
+                // Only ever added to a camera that already carries the camo mod's buffer, and the
+                // decal one goes on the same event that one is on. Buffers on a single event run
+                // in the order they were added, and this is added from a later onPreCull, so it
+                // always runs after the camo mod's.
+                var decals = new CommandBuffer { name = "[NoMagazineCamo] Sticky magazine camo" };
+                camera.AddCommandBuffer(CameraEvent.BeforeReflections, decals);
+                DecalBuffers.Add(camera, decals);
+
+                var restore = new CommandBuffer { name = "[NoMagazineCamo] Magazine stencil restore" };
+                camera.AddCommandBuffer(CameraEvent.BeforeLighting, restore);
+                RestoreBuffers.Add(camera, restore);
             }
             catch (Exception e)
             {
@@ -197,7 +221,8 @@ namespace NoMagazineCamo.Client
 
         private static void OnPreRender(Camera camera)
         {
-            if (!Buffers.TryGetValue(camera, out var buffer))
+            if (!DecalBuffers.TryGetValue(camera, out var buffer)
+                || !RestoreBuffers.TryGetValue(camera, out var restore))
             {
                 return;
             }
@@ -205,6 +230,7 @@ namespace NoMagazineCamo.Client
             try
             {
                 buffer.Clear();
+                restore.Clear();
                 if (!Wanted || !CamoDrawsOn(camera))
                 {
                     return;
@@ -239,10 +265,11 @@ namespace NoMagazineCamo.Client
                     buffer.ReleaseTemporaryRT(NormalsCopy);
                 }
 
-                // Last in this buffer, and this buffer is last at BeforeLighting: every magazine
-                // that was moved off its own stencil goes back onto it, so the lighting passes
-                // that follow see the weapon's value rather than the one the camo passes needed.
-                StencilRestore.Queue(buffer, MagazineStencil.All);
+                // Its own buffer, at BeforeLighting. Every pass that wants the clean stencil --
+                // the camo mod's decals, then ours, both at BeforeReflections -- has run by then,
+                // so every magazine moved off its own stencil goes back onto it and the lighting
+                // passes see the weapon's value rather than the one the camo passes needed.
+                StencilRestore.Queue(restore, MagazineStencil.All);
             }
             catch (Exception e)
             {
@@ -674,7 +701,7 @@ namespace NoMagazineCamo.Client
 
         private static void Prune()
         {
-            foreach (var pair in Buffers)
+            foreach (var pair in DecalBuffers)
             {
                 if (pair.Key == null)
                 {
@@ -684,8 +711,14 @@ namespace NoMagazineCamo.Client
 
             foreach (var camera in DeadCameras)
             {
-                Buffers[camera].Release();
-                Buffers.Remove(camera);
+                DecalBuffers[camera].Release();
+                DecalBuffers.Remove(camera);
+
+                if (RestoreBuffers.TryGetValue(camera, out var restore))
+                {
+                    restore.Release();
+                    RestoreBuffers.Remove(camera);
+                }
             }
 
             foreach (var pair in Clones)

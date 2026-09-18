@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -18,9 +18,14 @@ namespace NoMagazineCamo.Client
     /// It does not have to be. The stencil buffer is just a buffer, and the passes are ordered:
     ///
     ///     G-buffer (the magazine writes the clean stencil)
-    ///     BeforeLighting -- the camo mod's decals, then ours, then this
+    ///     BeforeReflections -- the camo mod's decals, then ours
+    ///     the deferred reflections pass, which takes the stencil buffer for its own culling
+    ///     BeforeLighting -- this
     ///     the lighting passes
     ///     AfterLighting -- the game's ambient highlight
+    ///
+    /// The reflections pass is why the decals are not here too: after it, the low two bits are
+    /// no longer the camo mod's categories to test against. See StickyCamo.
     ///
     /// Drawing the magazine's own renderers here with Comp Always / Pass Replace and no colour
     /// writes puts 2 back for everything after it. The decal passes see the clean stencil; the
