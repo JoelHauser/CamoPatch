@@ -119,8 +119,9 @@ Two consequences worth keeping in mind:
   working in a raid.**
 - Still unexercised: `Enabled = false`, and the `None` mode since the per-weapon work
   landed.
-- **1.2.0 (released 2026-10-21) has not been run in a raid.** Built against the
-  patched 4.1.5 assembly. To check: AmandsSense text stays behind walls; your painted
+- **1.2.0 (released 2026-10-21) was run in one raid the same day** (the pre1 build, same
+  code; the stencil restore ran) and Joel then had it released. Built against the
+  patched 4.1.5 assembly. What that raid checked is not recorded beyond that; the list: AmandsSense text stays behind walls; your painted
   gun's magazine clean in None, including in inspect/modding/camo editor; a bot's painted
   gun keeps magazine camo until you pick it up; magazines still lit like the gun.
 - **The stencil is a lighting category, not a free tag.** Measured: a magazine is lit
