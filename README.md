@@ -10,7 +10,7 @@ Weapon Camo And Stickers projects camo onto a gun from a box around it. The maga
 
 This addon gives you two choices:
 
-- **Keep magazines clean.** Presets, random bot camos and stickers stay off magazines, and the rest of the gun is painted as usual.
+- **Keep magazines clean.** Presets and stickers stay off your magazines, and the rest of the gun is painted as usual.
 - **Make the camo stick.** Magazines wear the gun's camo and stickers, and keep them all the way through a reload.
 
 You can pick either one for **each weapon separately**, from a panel under the camo editor, so it doesn't have to be all of your guns or none of them.
@@ -67,7 +67,9 @@ Revolver and grenade launcher cylinders are never affected. They keep their camo
 ## Compatibility
 
 - Client-only. No server mod.
+- Only **your** guns are affected: the ones in your hands or on your back, a painted gun you pick up off a body, and any gun shown in the inspect, modding or camo editor screens. Bots' guns, other players' guns and loose magazines are drawn exactly as Weapon Camo And Stickers draws them.
 - Works with Fika. Each client only changes how magazines look on that client.
+- Fixed in 1.2.0: with 1.1.0 installed, world-space text from other mods (AmandsSense's item and exfil labels, for one) could show through walls.
 - Nothing belonging to Weapon Camo And Stickers is modified — not its files, its presets, or its saved data. This addon only reads.
 
 ## Known limitations

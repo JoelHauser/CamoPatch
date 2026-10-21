@@ -42,7 +42,18 @@ This is the same lever the camo mod already pulls on itself — `Patch_PlayerBod
 sets the player's arms to 1 so gun decals skip them.
 
 Materials are copied per magazine (`renderer.materials`, not `sharedMaterials`) and their
-original stencil is kept, so removing the mod restores exactly what shipped.
+original stencil is kept, so removing the mod restores exactly what shipped. The copy is
+made the first time a magazine is actually cleaned, not at spawn, and destroyed once the
+magazine's pool object is gone -- Unity never frees `renderer.materials` copies itself.
+
+**Only the player's own magazines are ever moved to 3.** The stencil is the game's
+lighting category (see below), so it is kept off every model it does not need to be on.
+A magazine is changed only if it hangs under a painted gun's decal root **and** either
+that item is in one of the camo mod's `DecalCameras` preview sets (weapon inspect and
+modding, the camo editor, inventory icons, the character screen) or the nearest
+`EFT.Player` above it has `IsYourPlayer`. Bots' guns, other players' guns and loose
+magazines keep what they shipped with. A painted gun picked up off a body is under the
+player from then on, and its magazine follows the player's setting from that frame.
 
 ## Finding magazines
 
@@ -74,10 +85,14 @@ animation moves that bone.
 
 Once per frame, on the first camera's `onPreCull`:
 
-1. Map each spawned item's `SimpleDecalsHost.DecalsRoot` to its decals.
-2. For each live magazine, walk up to a decal root. None — restore it; nothing would
-   paint it either way.
-3. Compare its pose in root space against where it sits when seated.
+This loop runs in **every** mode, not only when something is set to stick: which
+magazines are the player's is the answer that changes from frame to frame.
+
+1. Map each spawned item's `SimpleDecalsHost.DecalsRoot` to its decals, and collect the
+   item ids in every `DecalCameras` preview set.
+2. For each live magazine, walk up to a decal root, then on to the owning `Player`. Not
+   the player's (see above) — restore it.
+3. The weapon resolves to keep-clean: set it to 3 and stop. Otherwise compare its pose in root space against where it sits when seated.
 4. Seated: restore it, and the gun's own decals paint it as usual, for free.
    Not seated: set it to stencil 3 and queue a draw.
 
@@ -159,7 +174,7 @@ Private, read by name through Harmony's `AccessTools`:
 | --- | --- |
 | `Plugin.ItemsWithDecals` | which items have decals, and what they are |
 | `Plugin.InstanceIdToItemId` | to go from a spawned object to its item id |
-| `Plugin.DecalCameras` | so preview cameras draw only their own item, like the camo mod's own pass |
+| `Plugin.DecalCameras` | so preview cameras draw only their own item, like the camo mod's own pass; and which items are in a preview, so their magazines follow the player's setting |
 | `Plugin.DecalRenderer` → `DecalRenderer.CommandBuffers` | to know which cameras decals are drawn on |
 
 In the game itself, beyond `AssetPoolObject.OnGetFromPool`, a postfix on
@@ -220,10 +235,16 @@ pass after it sees 2.
 The material is **`UI/Default`**, the one stock shader that exposes its whole stencil
 state as properties (`_Stencil`, `_StencilComp`, `_StencilOp`, `_StencilReadMask`,
 `_StencilWriteMask`) alongside `_ColorMask`, so this needs no shader of its own. It takes
-its depth test from the `unity_GUIZTestMode` global, which is set to `LessEqual` around
-the draws and back afterwards -- left at its usual `Always`, a magazine would write its
-stencil over whatever is in front of it, including the arms the camo mod deliberately
-keeps on a different value.
+its depth test from `unity_GUIZTestMode`, which is set to `LessEqual` **on the restore
+material itself** -- unset, a magazine would write its stencil over whatever is in front
+of it, including the arms the camo mod deliberately keeps on a different value.
+
+**Never as a global.** Up to 1.1.0 it was set globally around the draws and then put
+"back" to `Always`, which is not what the game leaves it at. Every world-space
+TextMeshPro takes its depth test from that same global, so from the first restore on,
+all of them drew through walls -- reported as AmandsSense's item and exfil labels
+showing through walls (DrakiaXYZ/SPT-AmandsSense#6). A value on the material overrides
+the global for that material only.
 
 `MagazineAmbient` is the fallback for when that is not possible: if `UI/Default` cannot
 be found, the stencil stays at 3 and an extra ambient quad matching the Hands entries is

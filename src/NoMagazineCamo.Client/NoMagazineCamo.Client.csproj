@@ -7,7 +7,7 @@
     <AssemblyName>NoMagazineCamo.Client</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
 
     <!-- Required. There is no sensible default: the plugin is compiled against the game's
          own assemblies, so this decides which EFT build it will load on. -->
@@ -24,7 +24,9 @@
          against a copy that is not installed into SPTPath. -->
     <CamoModDir Condition="'$(CamoModDir)' == ''">$(SPTPath)\BepInEx\plugins\7Bpencil.WeaponCamoAndStickers</CamoModDir>
 
-    <AssemblySearchPaths>$(GameManaged);$(AssemblySearchPaths)</AssemblySearchPaths>
+    <!-- {HintPathFromItem} first, so an explicit GameAssembly wins over the copy in Managed;
+         otherwise an unlaunched install's unpatched Assembly-CSharp is silently used instead. -->
+    <AssemblySearchPaths>{HintPathFromItem};$(GameManaged);$(AssemblySearchPaths)</AssemblySearchPaths>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 

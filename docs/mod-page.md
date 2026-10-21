@@ -8,7 +8,7 @@ stock finish in your hands.
 
 Two ways out of that:
 
-- **Keep magazines clean.** Presets, random bot camos and stickers stay off magazines.
+- **Keep magazines clean.** Presets and stickers stay off your magazines.
   The rest of the gun is painted as before.
 - **Or make the camo stick.** The magazine keeps the gun's camo and stickers the whole way
   out and back in.

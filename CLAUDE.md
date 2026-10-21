@@ -99,6 +99,16 @@ Two consequences worth keeping in mind:
   magazine-sized box of camo albedo painted onto the world. The stencil restore still has
   to be at `BeforeLighting`, so the two jobs are two buffers on two events. Shipped in
   1.1.0; `docs/internals.md` has the full ordering.
+- **Never set a shader global you do not own** (`SetGlobalFloat` and friends). 1.1.0 set
+  `unity_GUIZTestMode` globally for the stencil restore and "restored" it to `Always`;
+  every world-space TextMeshPro reads that global, so other mods' 3D text drew through
+  walls (DrakiaXYZ/SPT-AmandsSense#6). Set such values on our own material instead.
+- **Only the player's own magazines are moved off their stencil** -- under a painted
+  gun's decal root, and either in a camo-mod preview (`DecalCameras`) or under an
+  `EFT.Player` with `IsYourPlayer`. The per-frame loop runs in every mode to decide this.
+- `-GameAssembly` only took effect once the csproj put `{HintPathFromItem}` first in
+  `AssemblySearchPaths`; before that an unlaunched install's unpatched copy in `Managed`
+  was silently used instead.
 - A `CommandBuffer` holds a **material by reference, not by value**. Mutating a material
   the game also queues draws with rewrites its already-queued draws, which is why both the
   ambient quad and the decal clones draw through copies.
@@ -109,6 +119,10 @@ Two consequences worth keeping in mind:
   working in a raid.**
 - Still unexercised: `Enabled = false`, and the `None` mode since the per-weapon work
   landed.
+- **1.2.0 (pre-release, 2026-10-21) has not been run in a raid.** Built against the
+  patched 4.1.5 assembly. To check: AmandsSense text stays behind walls; your painted
+  gun's magazine clean in None, including in inspect/modding/camo editor; a bot's painted
+  gun keeps magazine camo until you pick it up; magazines still lit like the gun.
 - **The stencil is a lighting category, not a free tag.** Measured: a magazine is lit
   correctly at 2 and dark at 0, 1 *and* 3. Do not go looking for a spare value again --
   see `docs/internals.md`.

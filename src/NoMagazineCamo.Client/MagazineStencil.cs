@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace NoMagazineCamo.Client
 {
-    /// <summary>One magazine model, and the materials on it that carry a stencil.</summary>
+    /// <summary>One magazine model, and the renderers on it whose materials carry a stencil.</summary>
     internal sealed class Magazine
     {
         public readonly AssetPoolObject PoolObject;
@@ -22,33 +22,29 @@ namespace NoMagazineCamo.Client
         /// is also the lighting category a weapon in hands belongs to.</summary>
         public readonly int OriginalStencil;
 
-        private readonly Material[] _materials;
-        private readonly float[] _originals;
+        // Filled the first time the magazine is cleaned. Until then it renders the materials it
+        // shipped with, shared with whatever else uses them, and costs nothing -- which is most
+        // magazines in a raid, since only the player's own painted guns are ever cleaned.
+        private readonly List<Material> _copies = new List<Material>();
+        private readonly List<Material> _materials = new List<Material>();
+        private readonly List<float> _originals = new List<float>();
+        private bool _copied;
 
         // NaN while the materials hold what they shipped with.
         private float _applied = float.NaN;
 
-        public Magazine(AssetPoolObject poolObject, List<Material> materials, List<Renderer> renderers)
+        public Magazine(AssetPoolObject poolObject, List<Renderer> renderers, int originalStencil)
         {
             PoolObject = poolObject;
             Transform = poolObject.transform;
             Renderers = renderers.ToArray();
-            _materials = materials.ToArray();
-            _originals = new float[_materials.Length];
-            for (var i = 0; i < _materials.Length; i++)
-            {
-                _originals[i] = _materials[i].GetFloat(MagazineStencil.StencilTypeId);
-            }
-
-            // They are all the same in practice; the first is as good an answer as any, and 2 is
-            // the right fallback for a weapon part.
-            OriginalStencil = _originals.Length > 0 ? Mathf.RoundToInt(_originals[0]) : 2;
+            OriginalStencil = originalStencil;
         }
 
         // Unity's null: a pool object destroyed along with its pool compares equal to null.
         public bool Alive => PoolObject != null;
 
-        public bool HasMaterials => _materials.Length > 0;
+        public bool HasMaterials => Renderers.Length > 0;
 
         /// <summary>Whether this magazine is currently moved off the stencil it shipped with, and
         /// so needs putting back before the lighting passes read it.</summary>
@@ -62,7 +58,15 @@ namespace NoMagazineCamo.Client
                 return;
             }
 
-            Set(MagazineStencil.CleanStencil);
+            CopyMaterials();
+            foreach (var material in _materials)
+            {
+                if (material != null)
+                {
+                    material.SetFloat(MagazineStencil.StencilTypeId, MagazineStencil.CleanStencil);
+                }
+            }
+
             _applied = MagazineStencil.CleanStencil;
         }
 
@@ -74,7 +78,7 @@ namespace NoMagazineCamo.Client
                 return;
             }
 
-            for (var i = 0; i < _materials.Length; i++)
+            for (var i = 0; i < _materials.Count; i++)
             {
                 if (_materials[i] != null)
                 {
@@ -85,21 +89,67 @@ namespace NoMagazineCamo.Client
             _applied = float.NaN;
         }
 
-        private void Set(float value)
+        /// <summary>
+        /// Destroys the copies once the model is gone. Unity never frees what renderer.materials
+        /// hands out on its own, so without this every magazine ever cleaned would leak them.
+        /// </summary>
+        public void Release()
         {
-            foreach (var material in _materials)
+            foreach (var copy in _copies)
             {
-                if (material != null)
+                if (copy != null)
                 {
-                    material.SetFloat(MagazineStencil.StencilTypeId, value);
+                    UnityEngine.Object.Destroy(copy);
                 }
             }
+
+            _copies.Clear();
+            _materials.Clear();
+            _originals.Clear();
+        }
+
+        // Copies, not the shared asset. Nothing guarantees a magazine a material of its own,
+        // and changing a shared one would change whatever else on the gun uses it.
+        private void CopyMaterials()
+        {
+            if (_copied)
+            {
+                return;
+            }
+
+            _copied = true;
+            foreach (var renderer in Renderers)
+            {
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                foreach (var material in renderer.materials)
+                {
+                    if (material == null)
+                    {
+                        continue;
+                    }
+
+                    _copies.Add(material);
+                    if (material.HasProperty(MagazineStencil.StencilTypeId))
+                    {
+                        _materials.Add(material);
+                        _originals.Add(material.GetFloat(MagazineStencil.StencilTypeId));
+                    }
+                }
+            }
+
+            NoMagazineCamoPlugin.Log.LogDebug(
+                $"[NoMagazineCamo] {Transform.name}: first cleaned ({_materials.Count} stencil material(s))");
         }
     }
 
     /// <summary>
-    /// Finds every magazine model as the game hands it out, and keeps it out of reach of the
-    /// camo mod's decals.
+    /// Finds every magazine model as the game hands it out. Which of them are kept out of reach
+    /// of the camo mod's decals is decided once a frame by StickyCamo -- only those on a painted
+    /// gun the local player carries, or one the camo mod is showing in a preview.
     ///
     /// Hooked on AssetPoolObject.OnGetFromPool because every model the game shows comes out
     /// through it -- pooled ones from PopOrCreate, unpooled stubs from
@@ -134,7 +184,6 @@ namespace NoMagazineCamo.Client
 
         private static readonly List<Renderer> Renderers = new List<Renderer>();
         private static readonly List<Renderer> Used = new List<Renderer>();
-        private static readonly List<Material> Materials = new List<Material>();
 
         private static bool _failed;
 
@@ -164,7 +213,16 @@ namespace NoMagazineCamo.Client
         /// <summary>Puts every known magazine where the current settings say it belongs.</summary>
         internal static void ApplySettings()
         {
-            All.RemoveAll(magazine => !magazine.Alive);
+            All.RemoveAll(magazine =>
+            {
+                if (magazine.Alive)
+                {
+                    return false;
+                }
+
+                magazine.Release();
+                return true;
+            });
 
             foreach (var magazine in All)
             {
@@ -207,8 +265,7 @@ namespace NoMagazineCamo.Client
 
                 var magazine = Collect(__instance);
                 NoMagazineCamoPlugin.Log.LogDebug(
-                    $"[NoMagazineCamo] {template._name}: {Materials.Count} material(s) carry a stencil");
-                Materials.Clear();
+                    $"[NoMagazineCamo] {template._name}: {magazine.Renderers.Length} renderer(s) carry a stencil");
 
                 if (!magazine.HasMaterials)
                 {
@@ -237,50 +294,56 @@ namespace NoMagazineCamo.Client
             return template.IsChildOf(MagazineNode) && !template.IsChildOf(CylinderMagazineNode);
         }
 
+        // Only the renderers are kept here. Their materials are copied the first time the
+        // magazine is cleaned (Magazine.Clean), so a magazine that never is costs nothing.
         private static Magazine Collect(AssetPoolObject poolObject)
         {
-            Materials.Clear();
             Used.Clear();
             Renderers.Clear();
             poolObject.GetComponentsInChildren(true, Renderers);
 
+            // They are all the same in practice; the first is as good an answer as any, and 2 is
+            // the right fallback for a weapon part.
+            var originalStencil = -1;
+
             foreach (var renderer in Renderers)
             {
-                if (OwnerOf(renderer) != poolObject || !CarriesStencil(renderer.sharedMaterials))
+                if (OwnerOf(renderer) != poolObject)
+                {
+                    continue;
+                }
+
+                var stencil = StencilOf(renderer.sharedMaterials);
+                if (stencil < 0)
                 {
                     continue;
                 }
 
                 Used.Add(renderer);
-
-                // Copies, not the shared asset. Nothing guarantees a magazine a material of its
-                // own, and changing a shared one would change whatever else on the gun uses it.
-                foreach (var material in renderer.materials)
+                if (originalStencil < 0)
                 {
-                    if (material != null && material.HasProperty(StencilTypeId))
-                    {
-                        Materials.Add(material);
-                    }
+                    originalStencil = stencil;
                 }
             }
 
             Renderers.Clear();
-            var magazine = new Magazine(poolObject, Materials, Used);
+            var magazine = new Magazine(poolObject, Used, originalStencil < 0 ? 2 : originalStencil);
             Used.Clear();
             return magazine;
         }
 
-        private static bool CarriesStencil(Material[] materials)
+        // The stencil of the first material that carries one, or -1 if none does.
+        private static int StencilOf(Material[] materials)
         {
             foreach (var material in materials)
             {
                 if (material != null && material.HasProperty(StencilTypeId))
                 {
-                    return true;
+                    return Mathf.RoundToInt(material.GetFloat(StencilTypeId));
                 }
             }
 
-            return false;
+            return -1;
         }
 
         // The nearest pool object at or above a renderer. A cartridge riding in the magazine is

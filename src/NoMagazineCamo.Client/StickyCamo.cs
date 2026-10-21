@@ -17,8 +17,10 @@ namespace NoMagazineCamo.Client
     /// magazine is and where it rests. At the rest pose that difference is nothing, so the
     /// handover is seamless both ways.
     ///
-    /// Magazines on a gun with no camo, and loose ones, are handed back untouched: nothing
-    /// would paint them either way.
+    /// Only magazines on a painted gun the local player carries, or one the camo mod is showing
+    /// in a preview, are ever changed -- in every mode. A bot's gun, another player's, a loose
+    /// magazine on the floor: all keep exactly what they shipped with. Picking a painted gun up
+    /// off a body brings its magazine under the player, and it follows the setting from then on.
     ///
     /// Drawn the way the camo mod draws its own decals (DecalRenderer.cs, MIT): a cube per
     /// decal into GBuffer0 at BeforeReflections, from a command buffer added after the camo
@@ -86,6 +88,7 @@ namespace NoMagazineCamo.Client
         private static int _refreshedFrame = -1;
 
         private static readonly Dictionary<Transform, Owner> Roots = new Dictionary<Transform, Owner>();
+        private static readonly HashSet<string> PreviewItems = new HashSet<string>();
         private static readonly List<Draw> Draws = new List<Draw>();
         // Two per camera, on two events: the decal cubes alongside the camo mod's own at
         // BeforeReflections, and the stencil restore at BeforeLighting, once every pass that
@@ -106,15 +109,16 @@ namespace NoMagazineCamo.Client
         private static readonly Dictionary<Transform, Still> Motion = new Dictionary<Transform, Still>();
         private static readonly HashSet<int> LearnedSeat = new HashSet<int>();
 
-        // The loop earns its keep only when something, somewhere, is set to stick: that is the
-        // one answer that changes from frame to frame. With nothing sticky, every magazine just
-        // stays clean, and MagazineStencil's one-shot at spawn does that for free.
+        // Runs in every mode, not only when something is set to stick. Which magazines are the
+        // player's changes from frame to frame too -- a gun picked up off a body, a preview
+        // opened -- and the stencil is the game's lighting category rather than the camo mod's
+        // private tag, so it is moved only on magazines the player actually sees on their own
+        // painted guns. MagazineStencil's one-shot at spawn is only the fallback for when the
+        // camo mod's state could not be reached at all.
         private static bool Active =>
             _available
             && !_failed
             && NoMagazineCamoPlugin.Enabled.Value
-            && (NoMagazineCamoPlugin.MagazineCamo.Value == MagazineCamoMode.StickToMagazine
-                || MagazineChoices.AnyStick)
             && Camo.Plugin.Instance != null;
 
         /// <summary>Whether this loop is the thing deciding what magazines get, rather than
@@ -317,6 +321,7 @@ namespace NoMagazineCamo.Client
                 var magazine = magazines[i];
                 if (!magazine.Alive)
                 {
+                    magazine.Release();
                     magazines[i] = magazines[magazines.Count - 1];
                     magazines.RemoveAt(magazines.Count - 1);
                     continue;
@@ -325,7 +330,8 @@ namespace NoMagazineCamo.Client
                 if (!magazine.Transform.gameObject.activeInHierarchy
                     || !FindOwner(magazine.Transform, out var root, out var owner))
                 {
-                    // Not on a weapon the camo mod is drawing. Nothing would paint it either way.
+                    // Not on a painted weapon of the player's, nor in a preview. Either nothing
+                    // would paint it, or it is someone else's and is drawn as the camo mod draws it.
                     magazine.Restore();
                     continue;
                 }
@@ -364,12 +370,19 @@ namespace NoMagazineCamo.Client
             }
         }
 
-        // Every spawned item the camo mod is drawing, by the transform its decals hang from.
+        // Every spawned item the camo mod is drawing, by the transform its decals hang from, and
+        // every item it is drawing in a preview.
         private static void BuildRoots()
         {
             Roots.Clear();
+            PreviewItems.Clear();
 
             var plugin = Camo.Plugin.Instance;
+            foreach (var items in _decalCameras(plugin).Values)
+            {
+                PreviewItems.UnionWith(items);
+            }
+
             var itemsWithDecals = _itemsWithDecals(plugin);
 
             foreach (var pair in _instanceIdToItemId(plugin))
@@ -395,19 +408,46 @@ namespace NoMagazineCamo.Client
             }
         }
 
+        // True for a magazine on a painted gun that the local player carries -- in hand, slung,
+        // or just picked up off a body -- or on one the camo mod is showing in a preview: weapon
+        // inspection and modding, the camo editor, inventory icons, the character screen. The
+        // decal root is looked for first, because a dictionary lookup per bone is cheap and most
+        // magazines (loose, or on a bare gun) have none; only then does the walk go on up to the
+        // Player that owns the gun. The in-hands weapon is parented under
+        // PlayerBones.WeaponRoot.Original.parent, which is on the player's own bones.
         private static bool FindOwner(Transform magazine, out Transform root, out Owner owner)
         {
-            for (var transform = magazine.parent; transform != null; transform = transform.parent)
+            root = null;
+            owner = default;
+
+            var transform = magazine.parent;
+            for (; transform != null; transform = transform.parent)
             {
                 if (Roots.TryGetValue(transform, out owner))
                 {
                     root = transform;
-                    return true;
+                    break;
                 }
             }
 
-            root = null;
-            owner = default;
+            if (root == null)
+            {
+                return false;
+            }
+
+            if (PreviewItems.Contains(owner.ItemId))
+            {
+                return true;
+            }
+
+            for (; transform != null; transform = transform.parent)
+            {
+                if (transform.TryGetComponent<EFT.Player>(out var player))
+                {
+                    return player.IsYourPlayer;
+                }
+            }
+
             return false;
         }
 
@@ -754,6 +794,19 @@ namespace NoMagazineCamo.Client
             DeadCameras.Clear();
             DeadDecals.Clear();
             DeadLinks.Clear();
+
+            // Refresh drops dead magazines too, but only while the loop is active. This keeps the
+            // list, and the material copies Release frees, from growing while it is not.
+            MagazineStencil.All.RemoveAll(magazine =>
+            {
+                if (magazine.Alive)
+                {
+                    return false;
+                }
+
+                magazine.Release();
+                return true;
+            });
         }
 
         private static void PruneTransforms<T>(Dictionary<Transform, T> table)

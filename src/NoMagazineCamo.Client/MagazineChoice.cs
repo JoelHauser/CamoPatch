@@ -37,11 +37,6 @@ namespace NoMagazineCamo.Client
         private static string _path;
         private static bool _loaded;
 
-        /// <summary>Whether any weapon is set to stick. Kept up to date rather than scanned,
-        /// because the per-frame loop asks every frame: with nothing sticky anywhere there is
-        /// nothing for it to work out, and the cheap path at spawn covers the rest.</summary>
-        internal static bool AnyStick { get; private set; }
-
         private static readonly JsonSerializerSettings Settings = new JsonSerializerSettings
         {
             Formatting = Formatting.Indented,
@@ -76,8 +71,6 @@ namespace NoMagazineCamo.Client
                         Choices[pair.Key] = pair.Value;
                     }
                 }
-
-                Recount();
 
                 NoMagazineCamoPlugin.Log.LogInfo(
                     $"[NoMagazineCamo] {Choices.Count} weapon(s) have their own magazine setting");
@@ -141,27 +134,11 @@ namespace NoMagazineCamo.Client
                 Choices[itemId] = choice;
             }
 
-            Recount();
-
-            // The same two steps the F12 handler takes: this can start or stop the per-frame
-            // loop, and every magazine already out has to be put where the new answer says.
+            // The same two steps the F12 handler takes: every magazine already out has to be put
+            // where the new answer says.
             StickyCamo.Reset();
             MagazineStencil.ApplySettings();
             Save();
-        }
-
-        private static void Recount()
-        {
-            foreach (var choice in Choices.Values)
-            {
-                if (choice == MagazineChoice.StickToMagazine)
-                {
-                    AnyStick = true;
-                    return;
-                }
-            }
-
-            AnyStick = false;
         }
 
         private static void Save()

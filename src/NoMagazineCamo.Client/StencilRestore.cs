@@ -88,8 +88,6 @@ namespace NoMagazineCamo.Client
                 return;
             }
 
-            var queued = false;
-
             foreach (var magazine in magazines)
             {
                 // Only the ones actually moved. A seated magazine in sticky mode still carries the
@@ -112,23 +110,8 @@ namespace NoMagazineCamo.Client
                         continue;
                     }
 
-                    if (!queued)
-                    {
-                        // UI/Default takes its depth test from this global. Left at its usual
-                        // Always, the magazine's stencil would be written over whatever is in
-                        // front of it as well -- the arms, which the camo mod deliberately keeps
-                        // on a different value.
-                        buffer.SetGlobalFloat(GuiZTestModeId, (float)CompareFunction.LessEqual);
-                        queued = true;
-                    }
-
                     buffer.DrawRenderer(renderer, material);
                 }
-            }
-
-            if (queued)
-            {
-                buffer.SetGlobalFloat(GuiZTestModeId, (float)CompareFunction.Always);
             }
         }
 
@@ -157,6 +140,18 @@ namespace NoMagazineCamo.Client
             material.SetInt(StencilReadMaskId, 255);
             material.SetInt(StencilWriteMaskId, WriteMask);
             material.SetInt(ColorMaskId, 0);
+
+            // UI/Default takes its depth test from unity_GUIZTestMode. Left unset, the magazine's
+            // stencil would be written over whatever is in front of it as well -- the arms, which
+            // the camo mod deliberately keeps on a different value.
+            //
+            // Set on this material, never as a global. Up to 1.1.0 it was set globally around the
+            // draws and then "put back" to Always, which is not what the game leaves it at: every
+            // world-space TextMeshPro takes its depth test from the same global, so from then on
+            // all of them drew through walls -- AmandsSense's item and exfil labels among them
+            // (DrakiaXYZ/SPT-AmandsSense#6). A value on the material overrides the global for
+            // this material alone and touches nothing else.
+            material.SetInt(GuiZTestModeId, (int)CompareFunction.LessEqual);
 
             Materials[stencil] = material;
             return material;
