@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Comfort.Common;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -89,6 +90,12 @@ namespace NoMagazineCamo.Client
 
         private static readonly Dictionary<Transform, Owner> Roots = new Dictionary<Transform, Owner>();
         private static readonly HashSet<string> PreviewItems = new HashSet<string>();
+
+        // The local player's weapon in hands, refreshed once a frame. It is not under the Player:
+        // WeaponPrefab.Init detaches a firearm to the scene root, and the hands controller only
+        // positions it there, so the walk up to a Player never reaches one from a gun in hand.
+        private static Transform _yourHands;
+
         private static readonly List<Draw> Draws = new List<Draw>();
         // Two per camera, on two events: the decal cubes alongside the camo mod's own at
         // BeforeReflections, and the stencil restore at BeforeLighting, once every pass that
@@ -376,6 +383,7 @@ namespace NoMagazineCamo.Client
         {
             Roots.Clear();
             PreviewItems.Clear();
+            _yourHands = YourHands();
 
             var plugin = Camo.Plugin.Instance;
             foreach (var items in _decalCameras(plugin).Values)
@@ -408,13 +416,41 @@ namespace NoMagazineCamo.Client
             }
         }
 
+        // The local player's hands object, or null outside a game world (menus, which the
+        // preview sets cover) and while the hands hold nothing.
+        private static Transform YourHands()
+        {
+            var world = Singleton<EFT.GameWorld>.Instance;
+            if (world == null)
+            {
+                return null;
+            }
+
+            var player = world.MainPlayer;
+            if (player == null)
+            {
+                return null;
+            }
+
+            var hands = player.HandsController;
+            if (hands == null)
+            {
+                return null;
+            }
+
+            var model = hands.ControllerGameObject;
+            return model != null ? model.transform : null;
+        }
+
         // True for a magazine on a painted gun that the local player carries -- in hand, slung,
         // or just picked up off a body -- or on one the camo mod is showing in a preview: weapon
         // inspection and modding, the camo editor, inventory icons, the character screen. The
         // decal root is looked for first, because a dictionary lookup per bone is cheap and most
-        // magazines (loose, or on a bare gun) have none; only then does the walk go on up to the
-        // Player that owns the gun. The in-hands weapon is parented under
-        // PlayerBones.WeaponRoot.Original.parent, which is on the player's own bones.
+        // magazines (loose, or on a bare gun) have none; only then does the walk go on up.
+        //
+        // Two ways to be the player's from there. A slung gun hangs off the player's body, so a
+        // Player turns up above it. The gun in hand does not: it sits at the scene root (see
+        // _yourHands), so it is recognised by being the local player's hands object instead.
         private static bool FindOwner(Transform magazine, out Transform root, out Owner owner)
         {
             root = null;
@@ -442,6 +478,11 @@ namespace NoMagazineCamo.Client
 
             for (; transform != null; transform = transform.parent)
             {
+                if (transform == _yourHands)
+                {
+                    return true;
+                }
+
                 if (transform.TryGetComponent<EFT.Player>(out var player))
                 {
                     return player.IsYourPlayer;

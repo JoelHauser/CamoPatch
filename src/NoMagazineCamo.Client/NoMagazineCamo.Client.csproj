@@ -7,7 +7,7 @@
     <AssemblyName>NoMagazineCamo.Client</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
 
     <!-- Required. There is no sensible default: the plugin is compiled against the game's
          own assemblies, so this decides which EFT build it will load on. -->
@@ -58,6 +58,11 @@
     <!-- AssetPoolObject, ItemTemplate, TransformLinks. -->
     <Reference Include="Assembly-CSharp">
       <HintPath>$(GameAssembly)</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Singleton<GameWorld>, to find the local player's gun in hands. -->
+    <Reference Include="Comfort">
+      <HintPath>$(GameManaged)\Comfort.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine">

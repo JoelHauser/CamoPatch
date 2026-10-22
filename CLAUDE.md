@@ -104,8 +104,14 @@ Two consequences worth keeping in mind:
   every world-space TextMeshPro reads that global, so other mods' 3D text drew through
   walls (DrakiaXYZ/SPT-AmandsSense#6). Set such values on our own material instead.
 - **Only the player's own magazines are moved off their stencil** -- under a painted
-  gun's decal root, and either in a camo-mod preview (`DecalCameras`) or under an
-  `EFT.Player` with `IsYourPlayer`. The per-frame loop runs in every mode to decide this.
+  gun's decal root, and either in a camo-mod preview (`DecalCameras`), under an
+  `EFT.Player` with `IsYourPlayer`, or under `GameWorld.MainPlayer.HandsController.ControllerGameObject`.
+  The per-frame loop runs in every mode to decide this.
+- **A firearm in hands is not under its Player.** `WeaponPrefab.Init` sets
+  `transform.parent = null`, and `ItemHandsController` only positions the model, so the
+  gun in hand sits at the scene root (only zombies' simplified skeletons reparent it).
+  Slung guns do hang off the body. 1.2.0 assumed otherwise and left every gun in hand
+  vanilla -- noticed first on guns picked up off bodies; fixed in 1.2.1.
 - `-GameAssembly` only took effect once the csproj put `{HintPathFromItem}` first in
   `AssemblySearchPaths`; before that an unlaunched install's unpatched copy in `Managed`
   was silently used instead.
@@ -119,9 +125,10 @@ Two consequences worth keeping in mind:
   working in a raid.**
 - Still unexercised: `Enabled = false`, and the `None` mode since the per-weapon work
   landed.
-- **1.2.0 (released 2026-10-21) was run in one raid the same day** (the pre1 build, same
-  code; the stencil restore ran) and Joel then had it released. Built against the
-  patched 4.1.5 assembly. What that raid checked is not recorded beyond that; the list: AmandsSense text stays behind walls; your painted
+- **1.2.1 (released 2026-10-22)** fixes 1.2.0 missing the gun in hand, reported from a
+  raid. Before release it loaded in a game session and its sticky camo and stencil restore
+  came up in the menus; LogOutput.log showed no raid with it. Built against the
+  patched 4.1.5 assembly. To check: a gun picked up off a body is treated as yours; AmandsSense text stays behind walls; your painted
   gun's magazine clean in None, including in inspect/modding/camo editor; a bot's painted
   gun keeps magazine camo until you pick it up; magazines still lit like the gun.
 - **The stencil is a lighting category, not a free tag.** Measured: a magazine is lit

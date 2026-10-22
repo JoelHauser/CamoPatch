@@ -51,9 +51,12 @@ lighting category (see below), so it is kept off every model it does not need to
 A magazine is changed only if it hangs under a painted gun's decal root **and** either
 that item is in one of the camo mod's `DecalCameras` preview sets (weapon inspect and
 modding, the camo editor, inventory icons, the character screen) or the nearest
-`EFT.Player` above it has `IsYourPlayer`. Bots' guns, other players' guns and loose
-magazines keep what they shipped with. A painted gun picked up off a body is under the
-player from then on, and its magazine follows the player's setting from that frame.
+`EFT.Player` above it has `IsYourPlayer`, or it is under the local player's hands object
+(`GameWorld.MainPlayer.HandsController.ControllerGameObject`). That last test is needed
+because a firearm in hands is **not** under its `Player`: `WeaponPrefab.Init` detaches it
+to the scene root. Bots' guns, other players' guns and loose magazines keep what they
+shipped with. A painted gun picked up off a body is the player's from then on, slung or in
+hand, and its magazine follows the player's setting from that frame.
 
 ## Finding magazines
 
@@ -90,8 +93,8 @@ magazines are the player's is the answer that changes from frame to frame.
 
 1. Map each spawned item's `SimpleDecalsHost.DecalsRoot` to its decals, and collect the
    item ids in every `DecalCameras` preview set.
-2. For each live magazine, walk up to a decal root, then on to the owning `Player`. Not
-   the player's (see above) — restore it.
+2. For each live magazine, walk up to a decal root, then on to the owning `Player` or the
+   local player's hands object. Not the player's (see above) — restore it.
 3. The weapon resolves to keep-clean: set it to 3 and stop. Otherwise compare its pose in root space against where it sits when seated.
 4. Seated: restore it, and the gun's own decals paint it as usual, for free.
    Not seated: set it to stencil 3 and queue a draw.
