@@ -126,8 +126,8 @@ Two consequences worth keeping in mind:
 - Still unexercised: `Enabled = false`, and the `None` mode since the per-weapon work
   landed.
 - **1.2.1 (released 2026-10-22)** fixes 1.2.0 missing the gun in hand, reported from a
-  raid. Before release it loaded in a game session and its sticky camo and stencil restore
-  came up in the menus; LogOutput.log showed no raid with it. Built against the
+  raid. Joel ran it in a raid on 2026-10-22 (the d833baf build, same code).
+  Built against the
   patched 4.1.5 assembly. To check: a gun picked up off a body is treated as yours; AmandsSense text stays behind walls; your painted
   gun's magazine clean in None, including in inspect/modding/camo editor; a bot's painted
   gun keeps magazine camo until you pick it up; magazines still lit like the gun.
