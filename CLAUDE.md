@@ -104,8 +104,14 @@ Two consequences worth keeping in mind:
   every world-space TextMeshPro reads that global, so other mods' 3D text drew through
   walls (DrakiaXYZ/SPT-AmandsSense#6). Set such values on our own material instead.
 - **Only the player's own magazines are moved off their stencil** -- under a painted
-  gun's decal root, and either in a camo-mod preview (`DecalCameras`) or under an
-  `EFT.Player` with `IsYourPlayer`. The per-frame loop runs in every mode to decide this.
+  gun's decal root, and either in a camo-mod preview (`DecalCameras`), under an
+  `EFT.Player` with `IsYourPlayer`, or under `GameWorld.MainPlayer.HandsController.ControllerGameObject`.
+  The per-frame loop runs in every mode to decide this.
+- **A firearm in hands is not under its Player.** `WeaponPrefab.Init` sets
+  `transform.parent = null`, and `ItemHandsController` only positions the model, so the
+  gun in hand sits at the scene root (only zombies' simplified skeletons reparent it).
+  Slung guns do hang off the body. 1.2.0 assumed otherwise and left every gun in hand
+  vanilla -- noticed first on guns picked up off bodies; fixed in 1.2.1.
 - `-GameAssembly` only took effect once the csproj put `{HintPathFromItem}` first in
   `AssemblySearchPaths`; before that an unlaunched install's unpatched copy in `Managed`
   was silently used instead.
@@ -119,7 +125,7 @@ Two consequences worth keeping in mind:
   working in a raid.**
 - Still unexercised: `Enabled = false`, and the `None` mode since the per-weapon work
   landed.
-- **1.2.0 (released 2026-10-21) has not been run in a raid.** Built against the
+- **1.2.1 (built 2026-10-22, not yet released) has not been run in a raid.** 1.2.0's in-hands miss was reported from a raid. Built against the
   patched 4.1.5 assembly. To check: AmandsSense text stays behind walls; your painted
   gun's magazine clean in None, including in inspect/modding/camo editor; a bot's painted
   gun keeps magazine camo until you pick it up; magazines still lit like the gun.
