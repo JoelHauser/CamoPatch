@@ -7,7 +7,7 @@
     <AssemblyName>NoMagazineCamo.Client</AssemblyName>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
-    <Version>1.2.1</Version>
+    <Version>1.2.2</Version>
 
     <!-- Required. There is no sensible default: the plugin is compiled against the game's
          own assemblies, so this decides which EFT build it will load on. -->

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using EFT.AssetsManager;
@@ -14,9 +14,16 @@ namespace NoMagazineCamo.Client
         public readonly AssetPoolObject PoolObject;
         public readonly Transform Transform;
 
-        /// <summary>The renderers this magazine draws with, for redrawing it into the stencil
-        /// buffer once the camo pass no longer needs it moved off the gun's value.</summary>
+        /// <summary>Every renderer on this magazine whose materials carry a stencil, at every
+        /// level of detail.</summary>
         public readonly Renderer[] Renderers;
+
+        /// <summary>The ones it is actually seen with up close, for redrawing it into the stencil
+        /// buffer once the camo pass no longer needs it moved off the gun's value. Every magazine
+        /// ships a coarser LOD1 copy of its mesh beside LOD0; the LOD group hides it, but a
+        /// command buffer draw does not ask the LOD group, and its rougher outline stamps the
+        /// gun's stencil onto the ground around the magazine.</summary>
+        public readonly Renderer[] Drawn;
 
         /// <summary>The stencil this magazine shipped with -- in practice 2, the weapon's, which
         /// is also the lighting category a weapon in hands belongs to.</summary>
@@ -33,11 +40,12 @@ namespace NoMagazineCamo.Client
         // NaN while the materials hold what they shipped with.
         private float _applied = float.NaN;
 
-        public Magazine(AssetPoolObject poolObject, List<Renderer> renderers, int originalStencil)
+        public Magazine(AssetPoolObject poolObject, List<Renderer> renderers, HashSet<Renderer> distantOnly, int originalStencil)
         {
             PoolObject = poolObject;
             Transform = poolObject.transform;
             Renderers = renderers.ToArray();
+            Drawn = renderers.FindAll(renderer => !distantOnly.Contains(renderer)).ToArray();
             OriginalStencil = originalStencil;
         }
 
@@ -183,6 +191,8 @@ namespace NoMagazineCamo.Client
         private static readonly HashSet<int> Seen = new HashSet<int>();
 
         private static readonly List<Renderer> Renderers = new List<Renderer>();
+        private static readonly List<LODGroup> LodGroups = new List<LODGroup>();
+        private static readonly HashSet<Renderer> DistantOnly = new HashSet<Renderer>();
         private static readonly List<Renderer> Used = new List<Renderer>();
 
         private static bool _failed;
@@ -265,7 +275,8 @@ namespace NoMagazineCamo.Client
 
                 var magazine = Collect(__instance);
                 NoMagazineCamoPlugin.Log.LogDebug(
-                    $"[NoMagazineCamo] {template._name}: {magazine.Renderers.Length} renderer(s) carry a stencil");
+                    $"[NoMagazineCamo] {template._name}: {magazine.Renderers.Length} renderer(s) carry a stencil, "
+                    + $"{magazine.Drawn.Length} drawn up close");
 
                 if (!magazine.HasMaterials)
                 {
@@ -327,9 +338,48 @@ namespace NoMagazineCamo.Client
             }
 
             Renderers.Clear();
-            var magazine = new Magazine(poolObject, Used, originalStencil < 0 ? 2 : originalStencil);
+            CollectDistantOnly(poolObject);
+            var magazine = new Magazine(poolObject, Used, DistantOnly, originalStencil < 0 ? 2 : originalStencil);
             Used.Clear();
+            DistantOnly.Clear();
             return magazine;
+        }
+
+        // Renderers that only a lower level of detail uses. The player's own magazines are always
+        // close enough for LOD0, so those are never what is on screen.
+        private static void CollectDistantOnly(AssetPoolObject poolObject)
+        {
+            DistantOnly.Clear();
+            LodGroups.Clear();
+            poolObject.GetComponentsInChildren(true, LodGroups);
+
+            foreach (var group in LodGroups)
+            {
+                var lods = group.GetLODs();
+                for (var i = 1; i < lods.Length; i++)
+                {
+                    foreach (var renderer in lods[i].renderers)
+                    {
+                        if (renderer != null)
+                        {
+                            DistantOnly.Add(renderer);
+                        }
+                    }
+                }
+
+                if (lods.Length > 0)
+                {
+                    foreach (var renderer in lods[0].renderers)
+                    {
+                        if (renderer != null)
+                        {
+                            DistantOnly.Remove(renderer);
+                        }
+                    }
+                }
+            }
+
+            LodGroups.Clear();
         }
 
         // The stencil of the first material that carries one, or -1 if none does.

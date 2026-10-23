@@ -131,6 +131,11 @@ Two consequences worth keeping in mind:
   patched 4.1.5 assembly. To check: a gun picked up off a body is treated as yours; AmandsSense text stays behind walls; your painted
   gun's magazine clean in None, including in inspect/modding/camo editor; a bot's painted
   gun keeps magazine camo until you pick it up; magazines still lit like the gun.
+- **1.2.2 (released 2026-10-23)**: the stencil restore draws every sub-mesh (a part left out
+  came out dark), and only LOD0. Every magazine ships a `_LOD1` renderer beside `_LOD0`; a
+  command-buffer `DrawRenderer` ignores the LOD group, so LOD1's coarser outline stamped
+  stencil 2 onto the ground around a pulled-out magazine -- a jagged rim where the ground lost
+  its shadow. Both confirmed in game by Joel.
 - **The stencil is a lighting category, not a free tag.** Measured: a magazine is lit
   correctly at 2 and dark at 0, 1 *and* 3. Do not go looking for a spare value again --
   see `docs/internals.md`.

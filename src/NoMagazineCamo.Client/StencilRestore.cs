@@ -103,16 +103,40 @@ namespace NoMagazineCamo.Client
                     continue;
                 }
 
-                foreach (var renderer in magazine.Renderers)
+                // LOD0 only. The LOD1 copy is enabled too -- the LOD group hides it, not its
+                // enabled flag -- and drawn here its coarser outline would put the gun's stencil on
+                // the ground around the magazine, which then loses its shadow.
+                foreach (var renderer in magazine.Drawn)
                 {
                     if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy)
                     {
                         continue;
                     }
 
-                    buffer.DrawRenderer(renderer, material);
+                    // Every sub-mesh, not just the first: DrawRenderer draws one, and a part left out
+                    // would stay on the clean stencil through the lighting and come out dark.
+                    var subMeshes = SubMeshCount(renderer);
+                    for (var i = 0; i < subMeshes; i++)
+                    {
+                        buffer.DrawRenderer(renderer, material, i);
+                    }
                 }
             }
+        }
+
+        private static int SubMeshCount(Renderer renderer)
+        {
+            Mesh mesh = null;
+            if (renderer is SkinnedMeshRenderer skinned)
+            {
+                mesh = skinned.sharedMesh;
+            }
+            else if (renderer.TryGetComponent<MeshFilter>(out var filter))
+            {
+                mesh = filter.sharedMesh;
+            }
+
+            return mesh != null ? Math.Max(1, mesh.subMeshCount) : 1;
         }
 
         private static Material MaterialFor(int stencil)
