@@ -136,6 +136,11 @@ Two consequences worth keeping in mind:
   command-buffer `DrawRenderer` ignores the LOD group, so LOD1's coarser outline stamped
   stencil 2 onto the ground around a pulled-out magazine -- a jagged rim where the ground lost
   its shadow. Both confirmed in game by Joel.
+- **1.3.0 (released 2026-10-30, tag 1.3.0; confirmed in game by Joel)**: full wrap.
+  Max Angle 0 on a Paint decal writes -1.01 to its material, so the box paints every
+  surface (fixes the speckled gap on side-on faces like a sight hump's top). F12
+  `[Camo] Max Angle 0 covers everything`, default on. See
+  `docs/internals.md`, "Full wrap at Max Angle 0".
 - **The stencil is a lighting category, not a free tag.** Measured: a magazine is lit
   correctly at 2 and dark at 0, 1 *and* 3. Do not go looking for a spare value again --
   see `docs/internals.md`.
