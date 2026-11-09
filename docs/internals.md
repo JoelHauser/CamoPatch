@@ -95,23 +95,27 @@ magazines are the player's is the answer that changes from frame to frame.
    item ids in every `DecalCameras` preview set.
 2. For each live magazine, walk up to a decal root, then on to the owning `Player` or the
    local player's hands object. Not the player's (see above) — restore it.
-3. The weapon resolves to keep-clean: set it to 3 and stop. Otherwise compare its pose in root space against where it sits when seated.
+3. The weapon resolves to keep-clean: mark it clean and stop. Otherwise compare its pose in root space against where it sits when seated.
 4. Seated: restore it, and the gun's own decals paint it as usual, for free.
-   Not seated: set it to stencil 3 and queue a draw.
+   Not seated: mark it clean and queue a draw.
+
+"Mark it clean" no longer touches the magazine's materials (since 1.3.1): they keep the
+gun's stencil, 2, and the clean stencil is stamped into the buffer only around the decal
+passes that need it. See "The stencil is a lighting category" below.
 
 Then per camera, on `onPreRender`, into a command buffer added only to a camera that
-**already carries one of `DecalRenderer.CommandBuffers`**, on **`BeforeReflections`** —
-the event that mod uses — so it is always ordered after the camo mod's own. Every visible
-decal is drawn again with the decal root's matrix replaced by
-`magazine.localToWorld * inverse(seatedPose)`, mirrors included, through a per-decal
-material clone refreshed once a frame and set to stencil 3.
+**already carries one of `DecalRenderer.CommandBuffers`**, on **`BeforeReflections`**.
+The magazine is stamped to 3, every visible decal is drawn again with the decal root's
+matrix replaced by `magazine.localToWorld * inverse(seatedPose)`, mirrors included,
+through a per-decal material clone refreshed once a frame and set to stencil 3, and the
+magazine is stamped back to 2 — all inside that one buffer.
 
-The event matters. `BeforeLighting` looks like the natural place — it is where the
-restore below has to happen — but Unity's deferred reflections pass runs in between and
-uses the stencil buffer for its own probe culling. A decal cube drawn after it is testing
-`Comp Equal` against a stencil whose low two bits are no longer the camo mod's
-categories, so background geometry can match 3 and take a magazine-sized box of camo
-albedo painted onto it. The two jobs therefore go in two buffers on two events.
+The camo mod itself draws at **`BeforeLighting`** (`CameraEvent` 6 in 1.19.0's
+`DecalRenderer`; earlier versions of this document said otherwise). Ours does not follow
+it there, because Unity's deferred reflections pass runs in between and uses the stencil
+buffer for its own probe culling. A cube testing `Comp Equal 3` after it can match
+background geometry and paint a magazine-sized box of camo albedo onto it. The camo mod's
+own decals test 0, 1 and 2, which that does not disturb.
 
 At the seated pose that replacement matrix collapses to exactly the decal root's own
 `localToWorldMatrix`, so the handover in and out of a reload is seamless by construction
@@ -240,21 +244,45 @@ So there is no spare value. Measured in first person, a magazine is lit correctl
 and at nothing else: **0, 1 and 3 all render it dark.** Moving it off 2 to keep camo away
 from it cannot be left standing by the time the lighting runs.
 
-It does not have to be. The stencil buffer is just a buffer, and the passes are ordered:
+Nor can it be left standing through the passes *before* the lighting. Up to 1.3.0 the
+magazine's materials wrote 3 in the G-buffer and it stayed 3 until a restore at
+`BeforeLighting`; everything in between -- `Wetting`, the sun's distant-shadow mask,
+SSAO, `Stencil Shadow` -- saw a magazine that was not hands. So since 1.3.1 the materials
+keep 2 and the magazine is on 3 only inside two short windows. As logged on a stock
+outdoor map:
 
 ```
-G-buffer            the magazine writes the clean stencil, 3
-BeforeReflections   the camo mod's decals, then ours
-the deferred reflections pass, which takes the stencil buffer for its own culling
-BeforeLighting      the restore below
+G-buffer            the magazine writes the gun's stencil, 2
+BeforeReflections   ... Wetting,
+                    [ours] stamp 3 · carried decals · stamp 2,
+                    AOSix, static decals
+the deferred reflections pass
+BeforeLighting      AO, SetupDistantShadow, ComputeDistantShadowMask, SSAO Mask,
+                    game decals, Stencil Shadow,
+                    [ours] stamp 3, [WeaponCamoAndStickers] Deferred Decals, [ours] stamp 2
 the lighting passes
 AfterLighting       AmbientHighlight, one stencil-tested full-screen quad per category
 ```
 
-`StencilRestore` has a command buffer of its own at `BeforeLighting`, on the same cameras,
-and draws the magazine's own renderers with `Comp Always` / `Pass Replace` /
-`ColorMask 0`, writing 2 back. Every pass that wants 3 has run by then; every lighting
-pass after it sees 2.
+The `BeforeLighting` window needs our two buffers directly either side of the camo mod's,
+and buffers on one event run in the order they were added. So the camo mod's buffer -- its
+own object, from `DecalRenderer.CommandBuffers` -- is removed and re-added between ours.
+It cannot be found by comparing against `camera.GetCommandBuffers`: that returns fresh
+wrapper objects, never reference-equal to the camo mod's.
+
+A stamp draws the magazine's LOD0 meshes with `Comp Always` / `Pass Replace` /
+`ColorMask 0`, writing 3 or 2.
+
+**Pulled toward the eye.** A stamp drawn exactly where the magazine is z-fights it: a
+different shader computes the same depth a rounding error apart, so `LessEqual` passes on
+a random subset of pixels that changes every frame. Up to 1.3.0 that left speckles of the
+restore undone -- lit as "not hands", and only really visible in sunlight, so it showed
+as a flicker on reloads outdoors and never indoors. Each mesh is therefore drawn with
+`DrawMesh` at its `localToWorldMatrix` scaled about the camera by 0.998: every vertex
+moves along its own view ray, so the outline on screen is identical and only the depth
+shrinks, by about a millimetre at arm's length. Anything genuinely in front of the
+magazine is still in front. A `SkinnedMeshRenderer` (none seen on a magazine) falls back
+to `DrawRenderer` and the old risk.
 
 The material is **`UI/Default`**, the one stock shader that exposes its whole stencil
 state as properties (`_Stencil`, `_StencilComp`, `_StencilOp`, `_StencilReadMask`,
@@ -271,7 +299,8 @@ showing through walls (DrakiaXYZ/SPT-AmandsSense#6). A value on the material ove
 the global for that material only.
 
 `MagazineAmbient` is the fallback for when that is not possible: if `UI/Default` cannot
-be found, the stencil stays at 3 and an extra ambient quad matching the Hands entries is
+be found, nothing can be stamped, so the magazine's materials are switched to 3 as before
+1.3.1, the stencil stays at 3, and an extra ambient quad matching the Hands entries is
 added to `AmbientHighlight`'s own buffer instead, through a **copy** of
 `AmbientMaterial`. That copy is load-bearing rather than tidy -- a `CommandBuffer` holds
 a material by reference, and the game mutates that material's stencil inside the loop

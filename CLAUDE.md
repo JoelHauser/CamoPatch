@@ -91,8 +91,9 @@ Two consequences worth keeping in mind:
   not recognise, and throws the whole class out if one fails — reported as a patching
   exception rather than as your bug. A private helper named `Prepare` cost a full
   build-and-test cycle here, with the patch silently never applying.
-- **The carried decals go at `CameraEvent.BeforeReflections`, not `BeforeLighting`.** That
-  is the event the camo mod uses, and the reason is the stencil: Unity's deferred
+- **The carried decals go at `CameraEvent.BeforeReflections`, not `BeforeLighting`.** (The
+  camo mod itself is at `BeforeLighting` -- `CameraEvent` 6 in 1.19.0's `DecalRenderer`,
+  decompiled 2026-11-08; older notes here said otherwise.) The reason is the stencil: Unity's deferred
   reflections pass runs between the two and takes the stencil buffer for its own probe
   culling, so a decal cube drawn after it tests `Comp Equal 3` against bits that are no
   longer the camo mod's categories. Background geometry then matches and takes a
@@ -115,9 +116,37 @@ Two consequences worth keeping in mind:
 - `-GameAssembly` only took effect once the csproj put `{HintPathFromItem}` first in
   `AssemblySearchPaths`; before that an unlaunched install's unpatched copy in `Managed`
   was silently used instead.
+- **A seat learned before the gun is animated is wrong by millimetres.** During loading the
+  gun hangs on the body at its prefab pose for well over 12 frames; in hands the animator
+  holds the magazine 3-4 mm from that. A magazine holding still for `SeatedFrames` within
+  `NearSeatDistance` (10 mm, 5 degrees) of its seat re-seats it (`IsNearSeat`). 1.3.1.
+- **The magazine is on stencil 3 only inside two windows, never from the G-buffer on.**
+  Its materials keep 2 (`StickyCamo.Stamping`; `Magazine.Clean` only flags it). 3 is
+  stamped and 2 stamped back inside our BeforeReflections buffer around the carried decals,
+  and at BeforeLighting by two buffers directly either side of the camo mod's
+  (`AroundCamoBuffer`). Every other pass -- Wetting, the sun's distant-shadow mask, SSAO,
+  `Stencil Shadow` -- sees hands. The material switch is only the fallback when
+  `UI/Default` is missing. 1.3.1; `docs/internals.md` has the logged pass order.
+- **`camera.GetCommandBuffers` returns fresh wrappers**, never reference-equal to a buffer
+  someone holds. To reorder the camo mod's buffer, remove and re-add *its own reference*
+  (`DecalRenderer.CommandBuffers`). The first try compared with `Array.IndexOf` and silently
+  appended ours at the end.
+- **A redraw that changes an object's stencil must not tie with that object's depth.**
+  `DrawRenderer` with another shader at `LessEqual` computes the depth a rounding error off
+  and passes on a random per-frame subset of pixels: z-fighting with itself. That was the
+  outdoor reload flicker from 1.1.0 to 1.3.0 (missed restore pixels stayed at 3, lit wrong,
+  only really visible in sun). The stamps are `DrawMesh` at `localToWorldMatrix` scaled
+  about the eye by `TowardEye` 0.998: same outline on screen, ~1 mm closer.
 - A `CommandBuffer` holds a **material by reference, not by value**. Mutating a material
   the game also queues draws with rewrites its already-queued draws, which is why both the
   ambient quad and the decal clones draw through copies.
+- **Logs:** Joel runs with Debug on. `Player.log` / `Player-prev.log` in
+  `%USERPROFILE%\AppData\LocalLow\Battlestate Games\EscapeFromTarkov` survive one relaunch
+  (`BepInEx\LogOutput.log` does not); read them before the game is started again. A
+  temporary per-camera dump of `GetCommandBuffers` names at BeforeReflections/BeforeLighting
+  is what found the pass order -- cheap to bring back when ordering is in question.
+- When a bug is "outdoors only", suspects tried and **cleared** on 2026-11-08: ReflectSix,
+  TraceSix (matsix's Six mods), rain. FuckThisCulling and Smoothie were not involved.
 
 ## Status
 
@@ -141,6 +170,11 @@ Two consequences worth keeping in mind:
   surface (fixes the speckled gap on side-on faces like a sight hump's top). F12
   `[Camo] Max Angle 0 covers everything`, default on. See
   `docs/internals.md`, "Full wrap at Max Angle 0".
+- **1.3.1 (released 2026-11-08, tag 1.3.1)**: fixes the reload/mag-check flicker outdoors
+  (stencil redraw z-fighting, see Conventions) and the seat learned during loading. Stencil
+  3 now only inside two stamped windows. Confirmed in game by Joel before release (indoors
+  and outdoors, the 8:19 PM build; the release build only drops the `diag:` logging).
+  Notes: `docs/release-notes-1.3.1.md`.
 - **The stencil is a lighting category, not a free tag.** Measured: a magazine is lit
   correctly at 2 and dark at 0, 1 *and* 3. Do not go looking for a spare value again --
   see `docs/internals.md`.

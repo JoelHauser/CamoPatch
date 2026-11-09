@@ -48,7 +48,7 @@ namespace NoMagazineCamo.Client
         // Only the two bits the camo shader compares are ours to touch.
         private const int WriteMask = 3;
 
-        // One per stencil value written back. In practice this holds exactly one, for 2.
+        // One per stencil value written. In practice two: 3 around the decal passes, 2 after them.
         private static readonly Dictionary<int, Material> Materials = new Dictionary<int, Material>();
 
         private static Shader _shader;
@@ -78,11 +78,45 @@ namespace NoMagazineCamo.Client
 
         /// <summary>
         /// Queues the magazines that are currently moved off their own stencil to be drawn back
-        /// onto it. Appended to the same buffer the decals were drawn from, so it always runs
-        /// after them.
+        /// onto it.
         /// </summary>
-        internal static void Queue(CommandBuffer buffer, List<Magazine> magazines)
+        internal static void Queue(CommandBuffer buffer, List<Magazine> magazines, Camera camera)
         {
+            Queue(buffer, magazines, camera, -1);
+        }
+
+        /// <summary>
+        /// Queues the same magazines to be drawn onto the clean stencil instead, for the decal
+        /// passes that have to skip them. Always followed by <see cref="Queue(CommandBuffer, List{Magazine})"/>
+        /// once those passes have run.
+        /// </summary>
+        internal static void QueueClean(CommandBuffer buffer, List<Magazine> magazines, Camera camera)
+        {
+            Queue(buffer, magazines, camera, (int)MagazineStencil.CleanStencil);
+        }
+
+        // How far toward the eye the redraw is pulled, as a fraction of its distance: about a
+        // millimetre at arm's length.
+        //
+        // Drawn exactly where the magazine is, the redraw z-fights the magazine's own depth: a
+        // different shader computes the same position a rounding error apart, so LessEqual
+        // passes on some pixels and fails on others, in a pattern that changes every frame.
+        // Up to 1.3.0 that left speckles of the restore undone -- on the clean stencil, which is
+        // lit wrong, and most visibly in sunlight (2026-11-08, "flickers outdoors, not indoors").
+        // Once the clean stencil was stamped the same way, the misses let the camo mod paint
+        // the magazine, flashing indoors as well.
+        //
+        // Scaling about the eye moves every vertex along its own view ray, so the outline on
+        // screen is exactly the same and only the depth changes. Whatever is really in front
+        // of the magazine -- a finger on it, the gun -- is still in front.
+        private const float TowardEye = 0.998f;
+
+        // stencil < 0: each magazine's own.
+        private static void Queue(CommandBuffer buffer, List<Magazine> magazines, Camera camera, int stencil)
+        {
+            var eye = camera.transform.position;
+            var pull = Matrix4x4.Translate(eye) * Matrix4x4.Scale(Vector3.one * TowardEye) * Matrix4x4.Translate(-eye);
+
             if (!Available)
             {
                 return;
@@ -97,7 +131,7 @@ namespace NoMagazineCamo.Client
                     continue;
                 }
 
-                var material = MaterialFor(magazine.OriginalStencil);
+                var material = MaterialFor(stencil < 0 ? magazine.OriginalStencil : stencil);
                 if (material == null)
                 {
                     continue;
@@ -115,6 +149,21 @@ namespace NoMagazineCamo.Client
 
                     // Every sub-mesh, not just the first: DrawRenderer draws one, and a part left out
                     // would stay on the clean stencil through the lighting and come out dark.
+                    // A plain mesh is drawn pulled toward the eye (TowardEye). A skinned one has no
+                    // mesh to draw at a matrix without baking it, so it keeps DrawRenderer and the
+                    // z-fighting risk; magazines seen so far are plain meshes.
+                    if (renderer is MeshRenderer && renderer.TryGetComponent<MeshFilter>(out var filter) && filter.sharedMesh != null)
+                    {
+                        var mesh = filter.sharedMesh;
+                        var matrix = pull * renderer.localToWorldMatrix;
+                        for (var i = 0; i < Math.Max(1, mesh.subMeshCount); i++)
+                        {
+                            buffer.DrawMesh(mesh, matrix, material, i);
+                        }
+
+                        continue;
+                    }
+
                     var subMeshes = SubMeshCount(renderer);
                     for (var i = 0; i < subMeshes; i++)
                     {

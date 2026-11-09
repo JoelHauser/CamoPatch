@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Comfort.Common;
 using HarmonyLib;
@@ -24,8 +24,14 @@ namespace NoMagazineCamo.Client
     /// off a body brings its magazine under the player, and it follows the setting from then on.
     ///
     /// Drawn the way the camo mod draws its own decals (DecalRenderer.cs, MIT): a cube per
-    /// decal into GBuffer0 at BeforeReflections, from a command buffer added after the camo
-    /// mod's on exactly the cameras it draws on.
+    /// decal into GBuffer0, on exactly the cameras it draws on. The camo mod itself draws at
+    /// BeforeLighting (CameraEvent 6, checked in 1.19.0); these go at BeforeReflections.
+    ///
+    /// The magazine is on the clean stencil only inside two windows: around these draws, and
+    /// around the camo mod's buffer (AroundCamoBuffer). Up to 1.3.0 it carried 3 from the
+    /// G-buffer through to the restore, and outdoors the game's passes in between -- the sun's
+    /// distant shadow mask and Wetting among them -- took it for world rather than hands and
+    /// painted flickering patterns onto it during a reload (2026-11-08, gone indoors).
     ///
     /// BeforeReflections, not BeforeLighting, and that is not a detail. The decal shader tests
     /// `Ref [_StencilType] ReadMask 3 Comp Equal` against the stencil buffer as the G-buffer
@@ -102,6 +108,9 @@ namespace NoMagazineCamo.Client
         // reads the clean stencil has run and before the lighting passes read it back.
         private static readonly Dictionary<Camera, CommandBuffer> DecalBuffers = new Dictionary<Camera, CommandBuffer>();
         private static readonly Dictionary<Camera, CommandBuffer> RestoreBuffers = new Dictionary<Camera, CommandBuffer>();
+        // Directly before the camo mod's buffer at BeforeLighting, as the restore is directly
+        // after it: the magazine is on the clean stencil for that one buffer and nothing else.
+        private static readonly Dictionary<Camera, CommandBuffer> CleanBuffers = new Dictionary<Camera, CommandBuffer>();
         private static readonly Dictionary<Camo.Decal, Clone> Clones = new Dictionary<Camo.Decal, Clone>();
         private static readonly Dictionary<TransformLinks, Dictionary<Transform, TransformLinks.CachedTransform>> RestPoses =
             new Dictionary<TransformLinks, Dictionary<Transform, TransformLinks.CachedTransform>>();
@@ -131,6 +140,11 @@ namespace NoMagazineCamo.Client
         /// <summary>Whether this loop is the thing deciding what magazines get, rather than
         /// MagazineStencil's one-shot at spawn.</summary>
         internal static bool Deciding => Active;
+
+        /// <summary>Whether magazines keep the gun's stencil in their materials and are stamped
+        /// onto the clean one only around the decal passes, rather than carrying it from the
+        /// G-buffer on. Needs this loop's buffers and the restore's material.</summary>
+        internal static bool Stamping => Active && StencilRestore.Available;
 
         // A buffer is wanted for either job: drawing a magazine's camo onto it, or putting its
         // stencil back before the lighting reads it. The second happens in the keep-clean mode
@@ -199,6 +213,11 @@ namespace NoMagazineCamo.Client
             {
                 buffer.Clear();
             }
+
+            foreach (var buffer in CleanBuffers.Values)
+            {
+                buffer.Clear();
+            }
         }
 
         private static void OnPreCull(Camera camera)
@@ -220,8 +239,10 @@ namespace NoMagazineCamo.Client
                 camera.AddCommandBuffer(CameraEvent.BeforeReflections, decals);
                 DecalBuffers.Add(camera, decals);
 
+                var clean = new CommandBuffer { name = "[NoMagazineCamo] Magazine stencil clean" };
                 var restore = new CommandBuffer { name = "[NoMagazineCamo] Magazine stencil restore" };
-                camera.AddCommandBuffer(CameraEvent.BeforeLighting, restore);
+                AroundCamoBuffer(camera, clean, restore);
+                CleanBuffers.Add(camera, clean);
                 RestoreBuffers.Add(camera, restore);
             }
             catch (Exception e)
@@ -230,10 +251,59 @@ namespace NoMagazineCamo.Client
             }
         }
 
+        // Puts `clean` directly before the camo mod's buffer at BeforeLighting and `restore`
+        // directly after it. Buffers on one event run in the order they were added, so the camo
+        // mod's buffer -- its own object, from its CommandBuffers -- is taken off and put back
+        // between ours. It ends up after the game's decal and stencil-shadow buffers rather than
+        // before them; it only writes GBuffer0 on weapons and equipment, which those do not touch.
+        //
+        // Not by comparing against camera.GetCommandBuffers: that hands out fresh wrapper objects,
+        // so the camo mod's buffer is never reference-equal to anything in it (the first try,
+        // 2026-11-08, put both of ours at the end and left the camo pass painting the magazine).
+        // Its name is what is compared, only to check it really is on this camera.
+        private static void AroundCamoBuffer(Camera camera, CommandBuffer clean, CommandBuffer restore)
+        {
+            var renderer = _decalRenderer(Camo.Plugin.Instance);
+            CommandBuffer camo = null;
+            if (renderer != null)
+            {
+                _camoBuffers(renderer).TryGetValue(camera, out camo);
+            }
+
+            var onCamera = false;
+            if (camo != null)
+            {
+                foreach (var existing in camera.GetCommandBuffers(CameraEvent.BeforeLighting))
+                {
+                    if (existing.name == camo.name)
+                    {
+                        onCamera = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!onCamera)
+            {
+                NoMagazineCamoPlugin.Log.LogWarning(
+                    $"[NoMagazineCamo] {camera.name}: the camo mod's buffer is not at BeforeLighting; "
+                    + "magazine stencil buffers appended instead.");
+                camera.AddCommandBuffer(CameraEvent.BeforeLighting, clean);
+                camera.AddCommandBuffer(CameraEvent.BeforeLighting, restore);
+                return;
+            }
+
+            camera.RemoveCommandBuffer(CameraEvent.BeforeLighting, camo);
+            camera.AddCommandBuffer(CameraEvent.BeforeLighting, clean);
+            camera.AddCommandBuffer(CameraEvent.BeforeLighting, camo);
+            camera.AddCommandBuffer(CameraEvent.BeforeLighting, restore);
+        }
+
         private static void OnPreRender(Camera camera)
         {
             if (!DecalBuffers.TryGetValue(camera, out var buffer)
-                || !RestoreBuffers.TryGetValue(camera, out var restore))
+                || !RestoreBuffers.TryGetValue(camera, out var restore)
+                || !CleanBuffers.TryGetValue(camera, out var clean))
             {
                 return;
             }
@@ -242,10 +312,13 @@ namespace NoMagazineCamo.Client
             {
                 buffer.Clear();
                 restore.Clear();
+                clean.Clear();
                 if (!Wanted || !CamoDrawsOn(camera))
                 {
                     return;
                 }
+
+                var stamping = Stamping;
 
                 // The camo mod's own split: a preview camera draws only the items it was given,
                 // and every other camera it draws on -- the player's, and the scope's -- draws
@@ -265,6 +338,13 @@ namespace NoMagazineCamo.Client
                         buffer.GetTemporaryRT(NormalsCopy, -1, -1);
                         buffer.Blit(BuiltinRenderTextureType.GBuffer2, NormalsCopy);
                         buffer.SetRenderTarget(BuiltinRenderTextureType.GBuffer0, BuiltinRenderTextureType.CameraTarget);
+                        if (stamping)
+                        {
+                            // The magazines carry the gun's stencil out of the G-buffer; these
+                            // cubes test the clean one. On it for these draws only.
+                            StencilRestore.QueueClean(buffer, MagazineStencil.All, camera);
+                        }
+
                         started = true;
                     }
 
@@ -273,14 +353,26 @@ namespace NoMagazineCamo.Client
 
                 if (started)
                 {
+                    if (stamping)
+                    {
+                        StencilRestore.Queue(buffer, MagazineStencil.All, camera);
+                    }
+
                     buffer.ReleaseTemporaryRT(NormalsCopy);
                 }
 
-                // Its own buffer, at BeforeLighting. Every pass that wants the clean stencil --
-                // the camo mod's decals, then ours, both at BeforeReflections -- has run by then,
-                // so every magazine moved off its own stencil goes back onto it and the lighting
-                // passes see the weapon's value rather than the one the camo passes needed.
-                StencilRestore.Queue(restore, MagazineStencil.All);
+                // At BeforeLighting, either side of the camo mod's buffer (AroundCamoBuffer): on
+                // the clean stencil while its decals draw, so they skip the magazine, and back on
+                // the gun's straight after. Every other pass sees a magazine in hands. With the
+                // material fallback the magazine is already clean, so only the restore is needed.
+                if (stamping)
+                {
+                    clean.SetRenderTarget(BuiltinRenderTextureType.GBuffer0, BuiltinRenderTextureType.CameraTarget);
+                    StencilRestore.QueueClean(clean, MagazineStencil.All, camera);
+                }
+
+                restore.SetRenderTarget(BuiltinRenderTextureType.GBuffer0, BuiltinRenderTextureType.CameraTarget);
+                StencilRestore.Queue(restore, MagazineStencil.All, camera);
             }
             catch (Exception e)
             {
@@ -334,8 +426,10 @@ namespace NoMagazineCamo.Client
                     continue;
                 }
 
-                if (!magazine.Transform.gameObject.activeInHierarchy
-                    || !FindOwner(magazine.Transform, out var root, out var owner))
+                var active = magazine.Transform.gameObject.activeInHierarchy;
+                Transform root = null;
+                Owner owner = default;
+                if (!active || !FindOwner(magazine.Transform, out root, out owner))
                 {
                     // Not on a painted weapon of the player's, nor in a preview. Either nothing
                     // would paint it, or it is someone else's and is drawn as the camo mod draws it.
@@ -365,6 +459,28 @@ namespace NoMagazineCamo.Client
                     Seats[root] = now;
                     magazine.Restore();
                     continue;
+                }
+
+                // A seat learned before the gun's animation ran is off by a few millimetres:
+                // 2026-11-08, an F2000 learned on the player's body during loading, then sat 3 mm
+                // from it in the hands for the whole raid, so it never counted as seated and was
+                // carried against the wrong seat. A magazine holding still this close to its seat
+                // is seated; reloads and magazine checks move it centimetres, not millimetres.
+                if (IsNearSeat(now, rest))
+                {
+                    if (StillFrames(magazine.Transform, now) >= SeatedFrames)
+                    {
+                        NoMagazineCamoPlugin.Log.LogDebug(
+                            $"[NoMagazineCamo] {root.root.name}: magazine seat corrected by "
+                            + $"{((Vector3)now.GetColumn(3) - (Vector3)rest.GetColumn(3)).magnitude * 1000f:F1} mm.");
+                        Seats[root] = now;
+                        magazine.Restore();
+                        continue;
+                    }
+                }
+                else
+                {
+                    Motion.Remove(magazine.Transform);
                 }
 
                 magazine.Clean();
@@ -553,7 +669,8 @@ namespace NoMagazineCamo.Client
         // that no part of a reload animation holds still through it.
         private const int SeatedFrames = 12;
 
-        private static bool Learn(Transform root, Transform magazine, Matrix4x4 now, out Matrix4x4 rest)
+        // How many frames in a row this magazine has held this pose, counting this one.
+        private static int StillFrames(Transform magazine, Matrix4x4 now)
         {
             Motion.TryGetValue(magazine, out var still);
 
@@ -568,8 +685,28 @@ namespace NoMagazineCamo.Client
 
             still.Last = now;
             Motion[magazine] = still;
+            return still.Frames;
+        }
 
-            if (still.Frames < SeatedFrames)
+        // Within this of its seat, a magazine holding still is seated and the seat was learned a
+        // little off. A reload or magazine check takes it centimetres away.
+        private const float NearSeatDistance = 0.01f;
+        private const float NearSeatCosine = 0.9962f; // 5 degrees
+
+        private static bool IsNearSeat(Matrix4x4 now, Matrix4x4 rest)
+        {
+            if (((Vector3)now.GetColumn(3) - (Vector3)rest.GetColumn(3)).sqrMagnitude > NearSeatDistance * NearSeatDistance)
+            {
+                return false;
+            }
+
+            return Vector3.Dot(((Vector3)now.GetColumn(1)).normalized, ((Vector3)rest.GetColumn(1)).normalized) >= NearSeatCosine
+                && Vector3.Dot(((Vector3)now.GetColumn(2)).normalized, ((Vector3)rest.GetColumn(2)).normalized) >= NearSeatCosine;
+        }
+
+        private static bool Learn(Transform root, Transform magazine, Matrix4x4 now, out Matrix4x4 rest)
+        {
+            if (StillFrames(magazine, now) < SeatedFrames)
             {
                 rest = Matrix4x4.identity;
                 return false;
@@ -799,6 +936,12 @@ namespace NoMagazineCamo.Client
                 {
                     restore.Release();
                     RestoreBuffers.Remove(camera);
+                }
+
+                if (CleanBuffers.TryGetValue(camera, out var clean))
+                {
+                    clean.Release();
+                    CleanBuffers.Remove(camera);
                 }
             }
 

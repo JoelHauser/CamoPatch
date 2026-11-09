@@ -37,8 +37,11 @@ namespace NoMagazineCamo.Client
         private readonly List<float> _originals = new List<float>();
         private bool _copied;
 
-        // NaN while the materials hold what they shipped with.
-        private float _applied = float.NaN;
+        // Whether this magazine is kept off the gun's camo at all, and whether that is being done
+        // through its materials (the fallback) rather than by stamping the stencil buffer around
+        // the decal passes (StickyCamo.Stamping).
+        private bool _moved;
+        private bool _materialsMoved;
 
         public Magazine(AssetPoolObject poolObject, List<Renderer> renderers, HashSet<Renderer> distantOnly, int originalStencil)
         {
@@ -56,12 +59,28 @@ namespace NoMagazineCamo.Client
 
         /// <summary>Whether this magazine is currently moved off the stencil it shipped with, and
         /// so needs putting back before the lighting passes read it.</summary>
-        public bool IsMoved => !float.IsNaN(_applied);
+        public bool IsMoved => _moved;
 
-        /// <summary>Out of reach of every decal the camo mod draws by default.</summary>
+        /// <summary>
+        /// Out of reach of every decal the camo mod draws by default.
+        ///
+        /// Normally the materials are left alone: the magazine renders the gun's stencil into the
+        /// G-buffer, and StickyCamo stamps the clean stencil over it only around the decal passes.
+        /// Left at 3 from the G-buffer on, every pass in between saw a magazine that was not
+        /// "hands" -- outdoors the game's sun-shadow and wetting passes painted flickering
+        /// patterns onto it during reloads (2026-11-08). The material route is only the fallback
+        /// for when that stamping is not possible.
+        /// </summary>
         public void Clean()
         {
-            if (_applied == MagazineStencil.CleanStencil)
+            _moved = true;
+            if (StickyCamo.Stamping)
+            {
+                PutMaterialsBack();
+                return;
+            }
+
+            if (_materialsMoved)
             {
                 return;
             }
@@ -75,13 +94,19 @@ namespace NoMagazineCamo.Client
                 }
             }
 
-            _applied = MagazineStencil.CleanStencil;
+            _materialsMoved = true;
         }
 
         /// <summary>Back to what the model shipped with, so the gun's decals paint it again.</summary>
         public void Restore()
         {
-            if (float.IsNaN(_applied))
+            _moved = false;
+            PutMaterialsBack();
+        }
+
+        private void PutMaterialsBack()
+        {
+            if (!_materialsMoved)
             {
                 return;
             }
@@ -94,7 +119,7 @@ namespace NoMagazineCamo.Client
                 }
             }
 
-            _applied = float.NaN;
+            _materialsMoved = false;
         }
 
         /// <summary>
