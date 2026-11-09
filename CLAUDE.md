@@ -22,6 +22,7 @@ src/NoMagazineCamo.Client/
 scripts/pack.ps1            build + zip into dist/
 docs/internals.md           how it works, for other modders
 docs/mod-page.md            draft text for the mod page
+docs/mod-teaser.txt         the one-line teaser (short description) for the mod page
 ```
 
 ## Building
