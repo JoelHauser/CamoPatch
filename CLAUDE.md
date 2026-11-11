@@ -36,7 +36,7 @@ scripts\pack.ps1 -SPTPath <install> -Install        # also copy the DLL into tha
 scripts\pack.ps1 -SPTPath <install> -CamoModDir <dir> -GameAssembly <patched Assembly-CSharp.dll>
 ```
 
-Built against Weapon Camo And Stickers **1.19.0**. The floor is **1.18.0** --
+Built against Weapon Camo And Stickers **1.20.0** (1.3.2 on; 1.3.1 and before against 1.19.0). The floor is **1.18.0** --
 `CamoEditor.CalculateUIScaleMatrix`, which the per-weapon panel uses, does not exist in
 1.17.0; everything else it touches is present from 1.17.0 on. Check the installed version
 with `(Get-Item <dll>).VersionInfo.FileVersion`, and what a build actually linked against
@@ -169,8 +169,9 @@ Two consequences worth keeping in mind:
 - **1.3.0 (released 2026-10-30, tag 1.3.0; confirmed in game by Joel)**: full wrap.
   Max Angle 0 on a Paint decal writes -1.01 to its material, so the box paints every
   surface (fixes the speckled gap on side-on faces like a sight hump's top). F12
-  `[Camo] Max Angle 0 covers everything`, default on. See
-  `docs/internals.md`, "Full wrap at Max Angle 0".
+  `[Camo] Max Angle 0 covers everything`, default on. **Removed in 1.3.2**: camo mod 1.20.0
+  (2026-11-11) lets Max Angle go to -0.1 (the new default), which fixes the same gap
+  upstream, and our patch would have rewritten any value below 0 to -1.01.
 - **1.3.1 (released 2026-11-08, tag 1.3.1)**: fixes the reload/mag-check flicker outdoors
   (stencil redraw z-fighting, see Conventions) and the seat learned during loading. Stencil
   3 now only inside two stamped windows. Confirmed in game by Joel before release (indoors

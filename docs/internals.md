@@ -193,33 +193,18 @@ and `AmbientHighlight.StencilType` / `GetQuadMesh` are read for it.
 launcher-patched assembly. Asking whether a camera already carries one of the camo mod's
 command buffers is the answer that is correct on every build.
 
-Harmony patches, all postfixes: `CamoEditor.DrawWindow`, `Decal.ChangeMaxAngle` and
-`Decal.ChangePaintMode` (full wrap, below) and, in the game itself,
+Harmony patches, all postfixes: `CamoEditor.DrawWindow` and, in the game itself,
 `AssetPoolObject.OnGetFromPool`.
 
-### Full wrap at Max Angle 0
-
-The decal shader drops a pixel when `dot(G-buffer normal, decal Y axis) < _MaxAngle`. At
-the slider's minimum of 0 that keeps only surfaces facing the projection, so side-on
-surfaces sit exactly on the cut-off and the normal map's grain decides pixel by pixel which
-side each lands on -- a speckled gap along, say, the top of a sight hump on a gun painted
-from the side. The shader does not clamp `_MaxAngle`, so with **Max Angle 0 covers
-everything** on, a postfix on `Decal.ChangeMaxAngle` writes -1.01 to the decal's material
-instead, and the box paints every surface in it, far side included (planar projection, so
-side-on faces still show the texture stretched).
-
-- Only the material changes. `DecalInfo.MaxAngle` -- what the editor shows, what is saved
-  and what Fika sends -- keeps 0. The requested value is kept per decal in a
-  `ConditionalWeakTable` so turning the setting off writes it back.
-- **Erase decals are never changed**: in Erase mode the shader reads `_MaxAngle` as a mask
-  alpha cut-off, and below 0 the eraser would wipe its whole box. `Init` calls
-  `ChangeMaxAngle` before `ChangePaintMode`, so the paint-mode postfix decides again.
-- The magazine clones copy the material's properties every frame, so they wrap too.
+Up to 1.3.1 this addon also patched `Decal.ChangeMaxAngle` and `Decal.ChangePaintMode` to
+write -1.01 to a paint decal's `_MaxAngle` at 0 ("full wrap"), filling the speckled gap on
+side-on surfaces. Weapon Camo And Stickers 1.20.0 fixed that itself (Max Angle now goes down
+to -0.1, the new default), so 1.3.2 dropped it. Left in, it would have overridden every
+value below 0 with -1.01.
 
 **If any of these private reads are unwelcome, or there is a supported way to ask the
 same questions, say so and it will be changed.** This mod never writes to the camo mod's
-state or its files. The one thing it writes is `_MaxAngle` on a decal's own material, for
-full wrap above.
+state, its files or its decals' materials.
 
 ## Failure behaviour
 

@@ -1,7 +1,6 @@
 # No Magazine Camo
 
-**Control how weapon camo treats your magazines, and get full, gap-free coverage on the
-rest of the gun.** An addon for
+**Control how weapon camo treats your magazines.** An addon for
 [Weapon Camo And Stickers](https://github.com/7Bpencil/SPT.WeaponCamoAndStickers).
 
 ## Overview
@@ -10,8 +9,7 @@ Weapon Camo And Stickers projects camo onto a weapon from a box around it. The m
 sits inside that box, so it gets painted along with the gun. During a reload it leaves the
 box and snaps back to its stock finish in your hand.
 
-No Magazine Camo lets you decide what magazines do instead. It also fills in the patchy
-coverage on surfaces that run alongside the projection.
+No Magazine Camo lets you decide what magazines do instead.
 
 ## Features
 
@@ -25,19 +23,9 @@ coverage on surfaces that run alongside the projection.
   beneath the camo editor.
 - Revolver and grenade launcher cylinders are never affected.
 
-### Full coverage at Max Angle 0
-
-Projected camo only paints surfaces that face the projection. Edges that run parallel to
-it, such as the top of a sight hump, come out patchy or bare, even at Max Angle 0.
-
-With this addon, a layer set to **Max Angle 0** covers every surface inside its box,
-including the far side of the gun. Values above 0 work exactly as before, so stickers are
-unaffected.
-
-![Max Angle 0 covering the whole gun](https://raw.githubusercontent.com/JoelHauser/CamoPatch/main/docs/images/camowrap.png)
-
-Surfaces that run along the projection can still look slightly stretched. That comes from
-how projected camo works, not from missing coverage.
+Earlier versions also filled in patchy camo coverage at Max Angle 0. Weapon Camo And
+Stickers 1.20.0 now does that itself, so this addon no longer does. On 1.20.0, set Max
+Angle below 0 for full coverage.
 
 ## Settings
 
@@ -47,8 +35,6 @@ Press **F12** and open **No Magazine Camo**. Changes take effect immediately.
 | --- | --- | --- |
 | Enabled | On | Turns magazine handling on or off. |
 | Camo on magazines | None | **None** keeps magazines clean. **Stick to magazine** carries the camo onto them. A weapon with its own choice in the editor panel ignores this. |
-| Max Angle 0 covers everything | On | Turn off to get Weapon Camo And Stickers' original Max Angle 0 behaviour. |
-
 ## Requirements
 
 - SPT 4.1.5

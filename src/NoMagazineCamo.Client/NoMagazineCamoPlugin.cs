@@ -32,7 +32,7 @@ namespace NoMagazineCamo.Client
     {
         public const string PluginGuid = "com.mybutthasarash.nomagazinecamo";
         public const string PluginName = "No Magazine Camo";
-        public const string PluginVersion = "1.3.1";
+        public const string PluginVersion = "1.3.2";
 
         // The camo mod's own BepInPlugin GUID, read out of its source. Hard: without it
         // there is no camo to change, and sticky camo reads its decals directly.
@@ -42,8 +42,6 @@ namespace NoMagazineCamo.Client
 
         internal static ConfigEntry<bool> Enabled;
         internal static ConfigEntry<MagazineCamoMode> MagazineCamo;
-        internal static ConfigEntry<bool> FullWrapAtZero;
-
 
         private void Awake()
         {
@@ -66,19 +64,6 @@ namespace NoMagazineCamo.Client
                 + "Takes effect immediately. Revolver and grenade launcher cylinders are never touched.\n"
                 + "A weapon set to something other than Default in the camo editor ignores this.");
 
-            FullWrapAtZero = Config.Bind(
-                "Camo",
-                "Max Angle 0 covers everything",
-                true,
-                "On: a camo layer with Max Angle at 0.000 paints every surface inside its box, "
-                + "including side-on edges (like the top of a sight hump) and the far side of the gun.\n"
-                + "Off: 0 keeps only surfaces facing the camo, as Weapon Camo And Stickers does on its own.\n"
-                + "Erase layers are never changed. Takes effect immediately.");
-
-            // Before the magazine work, and on its own: it does not depend on anything that
-            // can fail to resolve below.
-            InstallFullWrap();
-
             if (!MagazineStencil.Resolve())
             {
                 return;
@@ -95,25 +80,6 @@ namespace NoMagazineCamo.Client
 
             Log.LogInfo("[NoMagazineCamo] loaded");
             LogState("startup");
-        }
-
-        private static void InstallFullWrap()
-        {
-            try
-            {
-                Harmony.CreateAndPatchAll(typeof(FullWrap), PluginGuid);
-                FullWrapAtZero.SettingChanged += (sender, e) =>
-                {
-                    FullWrap.ApplyAll();
-                    LogState("changed");
-                };
-            }
-            catch (Exception e)
-            {
-                Log.LogError(
-                    "[NoMagazineCamo] the camo mod's decals could not be hooked, so Max Angle 0 "
-                    + $"behaves as it does without this addon.\n{e}");
-            }
         }
 
         // Separately, and not fatally: without it the F12 setting still works, and so does every
@@ -161,7 +127,7 @@ namespace NoMagazineCamo.Client
         // thing only eyes can answer.
         internal static void LogState(string why)
         {
-            Log.LogInfo($"[NoMagazineCamo] settings {why}: Enabled={Enabled.Value}, Camo={MagazineCamo.Value}, FullWrapAtZero={FullWrapAtZero.Value}");
+            Log.LogInfo($"[NoMagazineCamo] settings {why}: Enabled={Enabled.Value}, Camo={MagazineCamo.Value}");
         }
     }
 }
